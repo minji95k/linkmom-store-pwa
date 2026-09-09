@@ -1,0 +1,11 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "직원 앱 (Mobile)", "x": 0, "y": 0, "w": 390, "h": 844 },
+    { "file": "Admin.dc.html", "title": "관리자 콘솔 (Desktop)", "x": 550, "y": 0, "w": 1440, "h": 900 }
+  ],
+  "annotations": [
+    { "id": "note-main", "x": 0, "y": -80, "w": 390, "text": "직원용 PWA — 홈 / 프로모션(상시·행사·NEW) / 공지 / 교육자료 / MY\n하단 탭과 카드가 실제로 클릭되는 프로토타입입니다." },
+    { "id": "note-admin", "x": 550, "y": -80, "w": 440, "text": "관리자 콘솔 — 대시보드 / 프로모션 / 공지 / 사용자는 상세 구현, 나머지는 구조만 표시됩니다." }
+  ],
+  "launch": { "view": "canvas" }
+}

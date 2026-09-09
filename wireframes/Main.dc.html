@@ -1,0 +1,746 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+      --purple: #B673CA;
+      --purple-dark: #8B4FA6;
+      --purple-tint: #F5EBF8;
+      --mint: #29C9AC;
+      --mint-dark: #1B9C85;
+      --mint-tint: #E6FAF5;
+      --bg: #FAF8FC;
+      --card: #FFFFFF;
+      --border: #ECE6F1;
+      --text: #221C29;
+      --text2: #6E6777;
+      --text3: #A39CAC;
+      --danger: #E1483D;
+      --danger-tint: #FDECEB;
+      --warning: #E08A2E;
+      --warning-tint: #FCF1E3;
+    }
+    a { color: var(--purple-dark); text-decoration: none; }
+    a:hover { color: var(--purple); }
+    .scrollarea::-webkit-scrollbar { width: 0; height: 0; }
+  </style>
+</helmet>
+
+<div style="width:390px;height:844px;position:relative;overflow:hidden;background:var(--bg);color:var(--text);border-radius:36px;box-shadow:0 0 0 1px var(--border)">
+
+  <!-- ===================== DETAIL MODE ===================== -->
+  <sc-if value="{{showDetail}}" hint-placeholder-val="{{false}}">
+    <div style="display:flex;flex-direction:column;height:100%">
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--card)">
+        <div onClick="{{closeDetail}}" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="#221C29" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="font-size:17px;font-weight:700">{{detailTitle}}</div>
+      </div>
+
+      <div class="scrollarea" style="flex:1 1 auto;overflow-y:auto;padding:20px 16px 32px">
+
+        <!-- Promotion detail -->
+        <sc-if value="{{isPromotionDetail}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:12px;font-weight:700;color:{{detailPromotion.typeColor}};background:{{detailPromotion.typeBg}};padding:4px 10px;border-radius:999px">{{detailPromotion.typeLabel}}</span>
+            <span style="font-size:12px;color:var(--text3)">{{detailPromotion.period}}</span>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">{{detailPromotion.brand}}</div>
+          <div style="font-size:21px;font-weight:900;line-height:1.35;margin-bottom:10px">{{detailPromotion.name}}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:18px">컬러: {{detailPromotion.colors}}</div>
+
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);margin-bottom:6px">
+              <span>소비자가</span>
+              <span style="text-decoration:line-through">{{detailPromotion.consumerPriceFmt}}원</span>
+            </div>
+            <sc-if value="{{detailPromotion.hasBasePrice}}" hint-placeholder-val="{{true}}">
+              <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);margin-bottom:10px">
+                <span>기준 판매가</span>
+                <span style="text-decoration:line-through">{{detailPromotion.basePriceFmt}}원</span>
+              </div>
+            </sc-if>
+            <div style="height:1px;background:var(--border);margin:8px 0 12px"></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+              <span style="font-size:14px;font-weight:700">카드결제 시</span>
+              <span style="font-size:22px;font-weight:900;color:var(--purple-dark)">{{detailPromotion.cardPriceFmt}}원</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-size:14px;font-weight:700">현금/계좌이체 시</span>
+              <span style="font-size:22px;font-weight:900;color:var(--mint-dark)">{{detailPromotion.cashPriceFmt}}원</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <sc-if value="{{detailPromotion.hasComponents}}" hint-placeholder-val="{{true}}">
+              <div>
+                <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">기본 구성품</div>
+                <div style="font-size:14px;line-height:1.5">{{detailPromotion.components}}</div>
+              </div>
+            </sc-if>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">{{detailPromotion.giftLabel}}</div>
+              <div style="font-size:14px;line-height:1.5">{{detailPromotion.gift}}</div>
+            </div>
+            <sc-if value="{{detailPromotion.hasPhotoReview}}" hint-placeholder-val="{{true}}">
+              <div>
+                <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">포토후기 혜택</div>
+                <div style="font-size:14px;line-height:1.5;white-space:pre-line">{{detailPromotion.photoReview}}</div>
+              </div>
+            </sc-if>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">매장 별 운영</div>
+              <div style="font-size:14px;line-height:1.5">{{detailPromotion.storeNote}}</div>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">매장 자체 프로모션</div>
+              <div style="font-size:14px;line-height:1.5">{{detailPromotion.storePromo}}</div>
+            </div>
+            <sc-if value="{{detailPromotion.hasRemark}}" hint-placeholder-val="{{false}}">
+              <div style="background:var(--purple-tint);border-radius:12px;padding:12px 14px">
+                <div style="font-size:12px;font-weight:700;color:var(--purple-dark);margin-bottom:4px">비고</div>
+                <div style="font-size:13px;line-height:1.5;color:var(--text)">{{detailPromotion.remark}}</div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- Notice detail -->
+        <sc-if value="{{isNoticeDetail}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="font-size:12px;font-weight:700;color:{{detailNotice.typeColor}};background:{{detailNotice.typeBg}};padding:4px 10px;border-radius:999px">{{detailNotice.typeLabel}}</span>
+            <span style="font-size:12px;color:var(--text3)">{{detailNotice.date}} · {{detailNotice.author}}</span>
+          </div>
+          <div style="font-size:19px;font-weight:900;line-height:1.4;margin-bottom:16px">{{detailNotice.title}}</div>
+          <div style="font-size:14px;line-height:1.7;color:var(--text);white-space:pre-line;margin-bottom:24px">{{detailNotice.body}}</div>
+          <sc-if value="{{detailNotice.requiresConfirmation}}" hint-placeholder-val="{{false}}">
+            <sc-if value="{{detailNotice.confirmed}}" hint-placeholder-val="{{false}}">
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:12px;background:var(--mint-tint);color:var(--mint-dark);font-weight:700;font-size:14px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#1B9C85" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                확인 완료했습니다
+              </div>
+            </sc-if>
+            <sc-if value="{{detailNotice.notConfirmed}}" hint-placeholder-val="{{true}}">
+              <div onClick="{{detailNotice.confirmHandler}}" style="text-align:center;padding:14px;border-radius:12px;background:var(--purple);color:#fff;font-weight:700;font-size:14px;cursor:pointer">확인 완료</div>
+            </sc-if>
+          </sc-if>
+        </sc-if>
+
+        <!-- Training detail -->
+        <sc-if value="{{isTrainingDetail}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <span style="font-size:12px;font-weight:700;color:var(--mint-dark);background:var(--mint-tint);padding:4px 10px;border-radius:999px">{{detailTraining.category}}</span>
+            <sc-if value="{{detailTraining.required}}" hint-placeholder-val="{{false}}">
+              <span style="font-size:12px;font-weight:700;color:var(--danger);background:var(--danger-tint);padding:4px 10px;border-radius:999px">필수교육</span>
+            </sc-if>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--mint-dark);margin-bottom:4px">{{detailTraining.brand}}</div>
+          <div style="font-size:20px;font-weight:900;line-height:1.35;margin-bottom:10px">{{detailTraining.name}}</div>
+          <div style="font-size:14px;color:var(--text2);margin-bottom:18px">{{detailTraining.summary}}</div>
+
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:16px">
+            <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:6px">핵심 판매 포인트</div>
+            <div style="font-size:14px;line-height:1.6">{{detailTraining.points}}</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:12px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 2h9l5 5v15H6V2z" stroke="#8B4FA6" stroke-width="1.8"/><path d="M15 2v5h5" stroke="#8B4FA6" stroke-width="1.8"/></svg>
+              <span style="font-size:13px;font-weight:600">제품 상세 스펙 PDF</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:12px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7L8 5z" stroke="#1B9C85" stroke-width="1.8" stroke-linejoin="round"/></svg>
+              <span style="font-size:13px;font-weight:600">제품 소개 영상</span>
+            </div>
+          </div>
+
+          <sc-if value="{{detailTraining.completed}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:12px;background:var(--mint-tint);color:var(--mint-dark);font-weight:700;font-size:14px">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#1B9C85" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              교육 확인 완료
+            </div>
+          </sc-if>
+          <sc-if value="{{detailTraining.notCompleted}}" hint-placeholder-val="{{true}}">
+            <div onClick="{{detailTraining.completeHandler}}" style="text-align:center;padding:14px;border-radius:12px;background:var(--purple);color:#fff;font-weight:700;font-size:14px;cursor:pointer">교육자료 확인 완료</div>
+          </sc-if>
+        </sc-if>
+
+        <!-- Recent changes -->
+        <sc-if value="{{isRecentChanges}}" hint-placeholder-val="{{false}}">
+          <div style="font-size:13px;color:var(--text2);margin-bottom:16px">최근 72시간 동안 발생한 중요 변경사항입니다</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{changesList}}" as="c" hint-placeholder-count="4">
+              <div onClick="{{c.onClick}}" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <span style="font-size:11px;font-weight:700;color:{{c.color}};background:{{c.bg}};padding:3px 9px;border-radius:999px">{{c.label}}</span>
+                  <span style="font-size:11px;color:var(--text3)">{{c.time}}</span>
+                </div>
+                <div style="font-size:14px;font-weight:700;margin-bottom:4px">{{c.title}}</div>
+                <div style="font-size:13px;color:var(--text2)">{{c.desc}}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===================== LIST MODE ===================== -->
+  <sc-if value="{{showList}}" hint-placeholder-val="{{true}}">
+    <div style="display:flex;flex-direction:column;height:100%">
+
+      <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--card)">
+        <div style="font-size:19px;font-weight:900">
+          <span style="color:var(--purple)">Link</span><span style="color:var(--mint-dark)">mom</span>
+        </div>
+        <div onClick="{{goNotices}}" style="position:relative;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M12 3a5 5 0 00-5 5v3.2c0 .5-.2 1-.5 1.4L5 15h14l-1.5-2.4c-.3-.4-.5-.9-.5-1.4V8a5 5 0 00-5-5z" stroke="#221C29" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 18a2.5 2.5 0 005 0" stroke="#221C29" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <sc-if value="{{hasNoticeUnread}}" hint-placeholder-val="{{true}}">
+            <div style="position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:999px;background:var(--danger)"></div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div class="scrollarea" style="flex:1 1 auto;overflow-y:auto;padding-bottom:12px">
+
+        <!-- HOME -->
+        <sc-if value="{{isHome}}" hint-placeholder-val="{{true}}">
+          <div style="padding:16px">
+            <div onClick="{{goPromotions}}" style="display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 16px;margin-bottom:16px;cursor:pointer">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#A39CAC" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="#A39CAC" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span style="font-size:14px;color:var(--text3)">브랜드, 제품명, 컬러로 검색</span>
+            </div>
+
+            <div onClick="{{urgentNotice.onClick}}" style="display:flex;gap:10px;align-items:flex-start;background:var(--danger-tint);border-radius:14px;padding:14px 16px;margin-bottom:12px;cursor:pointer">
+              <div style="width:22px;height:22px;border-radius:999px;background:var(--danger);color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;flex:0 0 auto">!</div>
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--danger);margin-bottom:2px">긴급공지</div>
+                <div style="font-size:14px;font-weight:700;color:var(--text)">{{urgentNotice.title}}</div>
+              </div>
+            </div>
+
+            <div onClick="{{goEventPromotions}}" style="background:linear-gradient(135deg, var(--purple) 0%, var(--mint) 100%);border-radius:16px;padding:18px;margin-bottom:12px;cursor:pointer">
+              <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.85);margin-bottom:6px">진행중인 특별 행사</div>
+              <div style="font-size:17px;font-weight:900;color:#fff;margin-bottom:4px">{{eventCampaign.name}}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.9);margin-bottom:12px">{{eventCampaign.period}} · 행사상품 {{eventCampaign.count}}개</div>
+              <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.22);color:#fff;font-size:12px;font-weight:700;padding:7px 12px;border-radius:999px">행사상품 보기 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            </div>
+
+            <div onClick="{{openRecentChanges}}" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px;cursor:pointer">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div style="font-size:14px;font-weight:700">최근 72시간 주요 변경</div>
+                <span style="font-size:12px;color:var(--purple-dark);font-weight:700">전체보기 ›</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{homeChangesPreview}}" as="c" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:10px;font-weight:700;color:{{c.color}};background:{{c.bg}};padding:2px 8px;border-radius:999px">{{c.label}}</span>
+                    <span style="font-size:13px;color:var(--text2)">{{c.title}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px;margin-bottom:20px">
+              <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center">
+                <div style="font-size:11px;color:var(--text3);margin-bottom:4px">상시 프로모션</div>
+                <div style="font-size:17px;font-weight:900">{{statPermanentCount}}</div>
+              </div>
+              <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center">
+                <div style="font-size:11px;color:var(--text3);margin-bottom:4px">진행중 행사</div>
+                <div style="font-size:17px;font-weight:900;color:var(--purple-dark)">{{statEventCount}}</div>
+              </div>
+              <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 10px;text-align:center">
+                <div style="font-size:11px;color:var(--text3);margin-bottom:4px">최근 Sync</div>
+                <div style="font-size:13px;font-weight:900;padding-top:3px">{{statLastSync}}</div>
+              </div>
+            </div>
+
+            <div style="font-size:14px;font-weight:700;margin-bottom:10px">필독 공지</div>
+            <div onClick="{{requiredNotice.onClick}}" style="display:flex;justify-content:space-between;align-items:center;background:var(--warning-tint);border-radius:14px;padding:14px 16px;margin-bottom:20px;cursor:pointer">
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--warning);margin-bottom:3px">필독</div>
+                <div style="font-size:14px;font-weight:700">{{requiredNotice.title}}</div>
+              </div>
+              <sc-if value="{{requiredNotice.notConfirmed}}" hint-placeholder-val="{{true}}">
+                <span style="font-size:11px;font-weight:700;color:#fff;background:var(--warning);padding:5px 10px;border-radius:999px;white-space:nowrap">확인필요</span>
+              </sc-if>
+            </div>
+
+            <div style="font-size:14px;font-weight:700;margin-bottom:10px">신규 교육자료</div>
+            <div onClick="{{newTraining.onClick}}" style="display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer">
+              <div style="width:44px;height:44px;border-radius:10px;background:var(--mint-tint);flex:0 0 auto;display:flex;align-items:center;justify-content:center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A2.5 2.5 0 016.5 3H19a1 1 0 011 1v14a1 1 0 01-1 1H7a2.5 2.5 0 00-2.5 2.5V5.5z" stroke="#1B9C85" stroke-width="1.8"/></svg>
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--mint-dark)">{{newTraining.brand}}</div>
+                <div style="font-size:14px;font-weight:700">{{newTraining.name}}</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- PROMOTIONS -->
+        <sc-if value="{{isPromotions}}" hint-placeholder-val="{{false}}">
+          <div style="padding:14px 16px 0">
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+              <div onClick="{{setPermanentSub}}" style="flex:1;text-align:center;padding:10px 0;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;background:{{permanentPillBg}};color:{{permanentPillColor}}">상시</div>
+              <div onClick="{{setEventSub}}" style="flex:1;text-align:center;padding:10px 0;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;background:{{eventPillBg}};color:{{eventPillColor}}">행사</div>
+              <div onClick="{{setNewSub}}" style="flex:1;text-align:center;padding:10px 0;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;background:{{newPillBg}};color:{{newPillColor}}">NEW</div>
+            </div>
+          </div>
+
+          <sc-if value="{{isPermanentSub}}" hint-placeholder-val="{{true}}">
+            <div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{permanentList}}" as="p" hint-placeholder-count="5">
+                <div onClick="{{p.onClick}}" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer">
+                  <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:2px">{{p.brand}}</div>
+                  <div style="font-size:15px;font-weight:700;margin-bottom:4px">{{p.name}}</div>
+                  <div style="font-size:12px;color:var(--text3);margin-bottom:10px">{{p.colors}}</div>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-end">
+                    <div style="font-size:12px;color:var(--text2)">{{p.gift}}</div>
+                    <div style="font-size:16px;font-weight:900;color:var(--purple-dark);white-space:nowrap">{{p.cardPriceFmt}}원</div>
+                  </div>
+                </div>
+              </sc-for>
+              <div style="height:8px"></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isEventSub}}" hint-placeholder-val="{{false}}">
+            <div style="padding:0 16px 8px">
+              <div style="background:var(--purple-tint);border-radius:14px;padding:14px 16px;margin-bottom:14px">
+                <div style="font-size:15px;font-weight:900;color:var(--purple-dark);margin-bottom:3px">{{eventCampaign.name}}</div>
+                <div style="font-size:12px;color:var(--text2)">{{eventCampaign.period}} · 행사상품 {{eventCampaign.count}}개 · 매장 자체 추가할인 불가</div>
+              </div>
+            </div>
+            <div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{eventList}}" as="p" hint-placeholder-count="5">
+                <div onClick="{{p.onClick}}" style="background:var(--card);border:1px solid var(--purple);border-radius:14px;padding:14px;cursor:pointer">
+                  <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:2px">{{p.brand}}</div>
+                  <div style="font-size:15px;font-weight:700;margin-bottom:4px">{{p.name}}</div>
+                  <div style="font-size:12px;color:var(--text3);margin-bottom:10px">{{p.gift}}</div>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-end">
+                    <div style="font-size:12px;color:var(--text3);text-decoration:line-through">{{p.consumerPriceFmt}}원</div>
+                    <div style="font-size:16px;font-weight:900;color:var(--purple-dark);white-space:nowrap">{{p.cardPriceFmt}}원</div>
+                  </div>
+                </div>
+              </sc-for>
+              <div style="height:8px"></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isNewSub}}" hint-placeholder-val="{{false}}">
+            <div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{newList}}" as="n" hint-placeholder-count="3">
+                <div onClick="{{n.onClick}}" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <span style="font-size:11px;font-weight:700;color:{{n.color}};background:{{n.bg}};padding:3px 9px;border-radius:999px">{{n.label}}</span>
+                    <span style="font-size:11px;color:var(--text3)">{{n.time}}</span>
+                  </div>
+                  <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:2px">{{n.brand}}</div>
+                  <div style="font-size:14px;font-weight:700;margin-bottom:8px">{{n.name}}</div>
+                  <sc-if value="{{n.hasBeforeAfter}}" hint-placeholder-val="{{true}}">
+                    <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+                      <span style="color:var(--text3);text-decoration:line-through">{{n.before}}</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#8B4FA6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      <span style="font-weight:800;color:var(--purple-dark)">{{n.after}}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{n.isNewProduct}}" hint-placeholder-val="{{false}}">
+                    <div style="font-size:13px;color:var(--text2)">{{n.desc}}</div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <div style="height:8px"></div>
+            </div>
+          </sc-if>
+        </sc-if>
+
+        <!-- NOTICES -->
+        <sc-if value="{{isNotices}}" hint-placeholder-val="{{false}}">
+          <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{noticeList}}" as="no" hint-placeholder-count="3">
+              <div onClick="{{no.onClick}}" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <span style="font-size:11px;font-weight:700;color:{{no.typeColor}};background:{{no.typeBg}};padding:3px 9px;border-radius:999px">{{no.typeLabel}}</span>
+                  <span style="font-size:11px;color:var(--text3)">{{no.date}}</span>
+                </div>
+                <div style="font-size:14px;font-weight:700;margin-bottom:4px">{{no.title}}</div>
+                <sc-if value="{{no.showConfirmBadge}}" hint-placeholder-val="{{false}}">
+                  <span style="font-size:11px;font-weight:700;color:var(--warning)">확인 필요</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <!-- TRAINING -->
+        <sc-if value="{{isTraining}}" hint-placeholder-val="{{false}}">
+          <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{trainingList}}" as="t" hint-placeholder-count="3">
+              <div onClick="{{t.onClick}}" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer">
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                  <span style="font-size:11px;font-weight:700;color:var(--mint-dark);background:var(--mint-tint);padding:3px 9px;border-radius:999px">{{t.category}}</span>
+                  <sc-if value="{{t.required}}" hint-placeholder-val="{{false}}">
+                    <span style="font-size:11px;font-weight:700;color:var(--danger);background:var(--danger-tint);padding:3px 9px;border-radius:999px">필수</span>
+                  </sc-if>
+                </div>
+                <div style="font-size:12px;font-weight:700;color:var(--mint-dark);margin-bottom:2px">{{t.brand}}</div>
+                <div style="font-size:14px;font-weight:700;margin-bottom:4px">{{t.name}}</div>
+                <div style="font-size:12px;color:var(--text2)">{{t.summary}}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <!-- MY -->
+        <sc-if value="{{isMy}}" hint-placeholder-val="{{false}}">
+          <div style="padding:16px">
+            <div style="display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:20px">
+              <div style="width:52px;height:52px;border-radius:999px;background:var(--purple);color:#fff;font-size:18px;font-weight:900;display:flex;align-items:center;justify-content:center;flex:0 0 auto">김</div>
+              <div>
+                <div style="font-size:16px;font-weight:900;margin-bottom:3px">김민지</div>
+                <div style="font-size:12px;color:var(--text2);margin-bottom:5px">용인본점 · STAFF</div>
+                <div style="font-size:11px;color:var(--text3)">linkmommkt2@gmail.com</div>
+              </div>
+            </div>
+
+            <div style="font-size:12px;font-weight:700;color:var(--text3);margin:0 4px 8px">알림</div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px;margin-bottom:20px">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 12px">
+                <div>
+                  <div style="font-size:14px;font-weight:700;margin-bottom:2px">Push 알림 받기</div>
+                  <div style="font-size:12px;color:var(--text3)">가격변경 · 중요공지 · 신규 교육자료</div>
+                </div>
+                <div onClick="{{togglePush}}" style="width:44px;height:24px;border-radius:999px;position:relative;cursor:pointer;background:{{pushTrackBg}}">
+                  <div style="width:20px;height:20px;border-radius:999px;background:#fff;position:absolute;top:2px;box-shadow:0 1px 3px rgba(0,0,0,0.25);left:{{pushKnobLeft}}"></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="font-size:12px;font-weight:700;color:var(--text3);margin:0 4px 8px">계정</div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:20px">
+              <div style="padding:14px 16px;font-size:14px;font-weight:600;border-bottom:1px solid var(--border)">계정 설정</div>
+              <div style="padding:14px 16px;font-size:14px;font-weight:600;color:var(--danger)">로그아웃</div>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+
+      <div style="flex:0 0 auto;display:flex;border-top:1px solid var(--border);background:var(--card);padding:8px 4px 12px">
+        <div onClick="{{goHome}}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1v-9z" stroke="{{homeColor}}" stroke-width="1.9" stroke-linejoin="round"/></svg>
+          <span style="font-size:10px;font-weight:700;color:{{homeColor}}">홈</span>
+        </div>
+        <div onClick="{{goPromotions}}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 8-9 9-8-8 2-9 7 0z" stroke="{{promoColor}}" stroke-width="1.9" stroke-linejoin="round"/><circle cx="9" cy="8" r="1.4" fill="{{promoColor}}"/></svg>
+          <span style="font-size:10px;font-weight:700;color:{{promoColor}}">프로모션</span>
+        </div>
+        <div onClick="{{goNotices}}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;position:relative">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3a5 5 0 00-5 5v3.2c0 .5-.2 1-.5 1.4L5 15h14l-1.5-2.4c-.3-.4-.5-.9-.5-1.4V8a5 5 0 00-5-5z" stroke="{{noticeColor}}" stroke-width="1.9" stroke-linejoin="round"/></svg>
+          <span style="font-size:10px;font-weight:700;color:{{noticeColor}}">공지</span>
+          <sc-if value="{{hasNoticeUnread}}" hint-placeholder-val="{{true}}">
+            <div style="position:absolute;top:-2px;right:24px;width:7px;height:7px;border-radius:999px;background:var(--danger)"></div>
+          </sc-if>
+        </div>
+        <div onClick="{{goTraining}}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;position:relative">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A2.5 2.5 0 016.5 3H19a1 1 0 011 1v14a1 1 0 01-1 1H7a2.5 2.5 0 00-2.5 2.5V5.5z" stroke="{{trainingColor}}" stroke-width="1.9"/></svg>
+          <span style="font-size:10px;font-weight:700;color:{{trainingColor}}">교육자료</span>
+          <sc-if value="{{hasTrainingUnread}}" hint-placeholder-val="{{true}}">
+            <div style="position:absolute;top:-2px;right:22px;width:7px;height:7px;border-radius:999px;background:var(--danger)"></div>
+          </sc-if>
+        </div>
+        <div onClick="{{goMy}}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="{{myColor}}" stroke-width="1.9"/><path d="M5 20c1.2-3.5 4-5.5 7-5.5s5.8 2 7 5.5" stroke="{{myColor}}" stroke-width="1.9" stroke-linecap="round"/></svg>
+          <span style="font-size:10px;font-weight:700;color:{{myColor}}">MY</span>
+        </div>
+      </div>
+
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tab: 'home',
+      promoSub: 'permanent',
+      detail: null,
+      pushEnabled: true,
+      confirmedNotices: {},
+      completedTraining: {}
+    };
+  }
+
+  goTo(tab) { this.setState({ tab: tab, detail: null }); }
+  goToEvent() { this.setState({ tab: 'promotions', promoSub: 'event', detail: null }); }
+  setSub(sub) { this.setState({ promoSub: sub }); }
+  openDetail(kind, id) { this.setState({ detail: { kind: kind, id: id } }); }
+  closeDetail() { this.setState({ detail: null }); }
+  togglePush() { this.setState({ pushEnabled: !this.state.pushEnabled }); }
+  confirmNotice(id) {
+    var next = Object.assign({}, this.state.confirmedNotices);
+    next[id] = true;
+    this.setState({ confirmedNotices: next });
+  }
+  completeTraining(id) {
+    var next = Object.assign({}, this.state.completedTraining);
+    next[id] = true;
+    this.setState({ completedTraining: next });
+  }
+
+  fmt(n) {
+    return n.toLocaleString('ko-KR');
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+
+    var permanentData = [
+      { id: 'p1', brand: '리안', name: '벨라 휴대용 유모차', colors: '코튼 베이지, 클래식 토프, 애쉬 카키, 애쉬 로즈', period: '8/1~8/31', consumerPrice: 478000, basePrice: 398000, cardPrice: 368000, cashPrice: 349600, components: '캐링백, 컵홀더, 오거나이저, 핸드스트랩', gift: '방풍커버(S), 전용 스낵트레이', photoReview: 'Npay 5천원', storeNote: '모두 운영', storePromo: '가능', remark: '' },
+      { id: 'p2', brand: '리안', name: '플릭 절충형 유모차', colors: '클래식 토프, 시크 블랙', period: '상시', consumerPrice: 628000, basePrice: 628000, cardPrice: 598000, cashPrice: 568100, components: '', gift: '방풍커버(L)', photoReview: 'Npay 1만원', storeNote: '모두 운영', storePromo: '가능', remark: '클래식 토프 색상은 업체 배송 시 9월 둘째주 입고 예정' },
+      { id: 'p3', brand: '브라이텍스', name: '베이비세이프 PRO+ 듀얼픽스 5z (+ VARIO BASE)', colors: '어반올리브 + 어반올리브', period: '상시', consumerPrice: 1480000, basePrice: 1400000, cardPrice: 1370000, cashPrice: 1301500, components: '', gift: '후방거울, 이유식기, 유미 샘플팩(160ml 1개, 이지고 1box)', photoReview: '', storeNote: '모두 운영', storePromo: '가능', remark: '' },
+      { id: 'p4', brand: '브라이텍스', name: '키드픽스 M I-Size', colors: '블랙, 미드나잇그레이', period: '상시', consumerPrice: 480000, basePrice: 330000, cardPrice: 313500, cashPrice: 313500, components: '', gift: '쿨시트, 발받침대', photoReview: '', storeNote: '동백 불가', storePromo: '기준 판매가의 5%', remark: '' },
+      { id: 'p5', brand: '조이', name: '피니티 시그니처 절충형 유모차', colors: '샌드스톤/에보니', period: '상시', consumerPrice: 620000, basePrice: 553000, cardPrice: 553000, cashPrice: 525350, components: '어댑터, 레인커버, 기저귀가방, 컵홀더', gift: '-', photoReview: 'N페이 1만원 상품권', storeNote: '모두 운영', storePromo: '가능', remark: '' }
+    ];
+
+    var eventData = [
+      { id: 'e1', brand: '미마', name: '자리맥스 디럭스 유모차', colors: '샴페인프레임, 블랙프레임', consumerPrice: 2490000, basePrice: 0, cardPrice: 599000, cashPrice: 599000, gift: '링크맘 단독 사은품 미마 자리맥스 방충망 증정', storeNote: '모두 운영', storePromo: '불가', remark: '방충망 한정수량 20ea' },
+      { id: 'e2', brand: '미마', name: '크레오 절충형 유모차', colors: '', consumerPrice: 1690000, basePrice: 0, cardPrice: 759000, cashPrice: 759000, gift: '-', storeNote: '모두 운영', storePromo: '불가', remark: '' },
+      { id: 'e3', brand: '순성', name: '26년new 노바 주니어 카시트', colors: '', consumerPrice: 420000, basePrice: 200000, cardPrice: 189000, cashPrice: 189000, gift: '컵홀더+쿨시트', storeNote: '모두 운영', storePromo: '불가', remark: '링크맘 단독상품' },
+      { id: 'e4', brand: '순성', name: '우노 에어+캐리 바구니 카시트', colors: '', consumerPrice: 649000, basePrice: 590000, cardPrice: 548000, cashPrice: 548000, gift: '-', storeNote: '모두 운영', storePromo: '불가', remark: '동백점 온누리/지역화폐 사용가능' },
+      { id: 'e5', brand: '순성', name: '[트래블세트] 코니 휴대용 유모차+캐리 바구니 카시트', colors: '', consumerPrice: 800000, basePrice: 495000, cardPrice: 495000, cashPrice: 495000, gift: '-', storeNote: '모두 운영', storePromo: '불가', remark: '동백점 온누리/지역화폐 사용가능' }
+    ];
+
+    var noticesData = [
+      { id: 'no1', typeLabel: '긴급', typeColor: '#E1483D', typeBg: '#FDECEB', title: '카드결제 시스템 점검 안내', body: '9/10(수) 02:00~04:00 카드결제 시스템 점검이 진행됩니다.\n해당 시간 동안에는 현금 또는 계좌이체로만 결제가 가능하니 참고 부탁드립니다.\n\n문의사항은 IT운영팀으로 연락 주세요.', author: 'IT운영팀', date: '2026-09-09', requiresConfirmation: false },
+      { id: 'no2', typeLabel: '필독', typeColor: '#E08A2E', typeBg: '#FCF1E3', title: '가을 시즌 사은품 정책 변경 안내', body: '9/20부터 진행되는 [링크맘 가을 유모차 페어] 기간 중에는 매장 자체 추가 사은품 지급이 불가합니다.\n행사 상품에 한해 본사 지정 사은품만 증정 부탁드리며, 상시 프로모션 상품은 기존과 동일하게 운영됩니다.\n\n확인 후 [확인 완료] 버튼을 눌러주세요.', author: 'MD팀', date: '2026-09-08', requiresConfirmation: true },
+      { id: 'no3', typeLabel: '일반', typeColor: '#6E6777', typeBg: '#F1EEF4', title: '9월 신규 교육자료 업로드 안내', body: '조이 피니티 시그니처 유모차 교육자료가 업로드되었습니다.\n교육자료 탭에서 확인해주세요.', author: 'MD팀', date: '2026-09-07', requiresConfirmation: false }
+    ];
+
+    var trainingData = [
+      { id: 't1', brand: '조이', name: '피니티 시그니처 절충형 유모차', category: '유모차', summary: '2026년 신규 입점 절충형 유모차', points: '초경량 프레임 · 원핸드 폴딩 · 신생아 호환 가능', required: true, date: '2026-09-07' },
+      { id: 't2', brand: '브라이텍스', name: '베이비세이프 PRO+ 듀얼픽스 5z', category: '카시트', summary: 'ISOFIX 듀얼픽스 방식 인펀트 카시트', points: '360도 회전 베이스 · 5점식 하네스 · 사이드 임팩트 프로텍션', required: true, date: '2026-09-02' },
+      { id: 't3', brand: '리안', name: '플릭 절충형 유모차', category: '유모차', summary: '원터치 폴딩 절충형 유모차', points: '초경량 6.9kg · 기내 반입 가능 사이즈', required: false, date: '2026-08-28' }
+    ];
+
+    var permanentList = permanentData.map(function (p) {
+      return Object.assign({}, p, {
+        cardPriceFmt: self.fmt(p.cardPrice),
+        onClick: function () { self.openDetail('promotion', p.id); }
+      });
+    });
+
+    var eventList = eventData.map(function (p) {
+      return Object.assign({}, p, {
+        consumerPriceFmt: self.fmt(p.consumerPrice),
+        cardPriceFmt: self.fmt(p.cardPrice),
+        onClick: function () { self.openDetail('promotion', p.id); }
+      });
+    });
+
+    var allProducts = permanentData.concat(eventData);
+    function findProduct(id) {
+      for (var i = 0; i < allProducts.length; i++) { if (allProducts[i].id === id) return allProducts[i]; }
+      return allProducts[0];
+    }
+
+    var newRaw = [
+      { id: 'n1', productId: 'p2', label: '가격변경', color: '#8B4FA6', bg: '#F5EBF8', brand: '리안', name: '플릭 절충형 유모차', hasBeforeAfter: true, before: '628,000원', after: '598,000원', isNewProduct: false, desc: '', time: '2시간 전' },
+      { id: 'n2', productId: 'p4', label: '사은품변경', color: '#1B9C85', bg: '#E6FAF5', brand: '브라이텍스', name: '키드픽스 M I-Size', hasBeforeAfter: true, before: '쿨시트', after: '쿨시트, 발받침대', isNewProduct: false, desc: '', time: '5시간 전' },
+      { id: 'n3', productId: 'p5', label: '신규상품', color: '#E08A2E', bg: '#FCF1E3', brand: '조이', name: '피니티 시그니처 절충형 유모차', hasBeforeAfter: false, before: '', after: '', isNewProduct: true, desc: '신규 프로모션이 등록되었습니다', time: '12시간 전' }
+    ];
+    var newList = newRaw.map(function (n) {
+      return Object.assign({}, n, { onClick: function () { self.openDetail('promotion', n.productId); } });
+    });
+
+    var changesRaw = [
+      { id: 'c0', label: '행사시작', color: '#8B4FA6', bg: '#F5EBF8', title: '링크맘 가을 유모차 페어 시작', desc: '9/20부터 행사상품 5개 노출 시작', time: '1일 전', productId: null },
+      { id: 'n1', label: '가격변경', color: '#8B4FA6', bg: '#F5EBF8', title: '리안 플릭 절충형 유모차', desc: '카드결제가 628,000원 → 598,000원', time: '2시간 전', productId: 'p2' },
+      { id: 'n2', label: '사은품변경', color: '#1B9C85', bg: '#E6FAF5', title: '브라이텍스 키드픽스 M I-Size', desc: '증정 사은품에 발받침대 추가', time: '5시간 전', productId: 'p4' },
+      { id: 'n3', label: '신규상품', color: '#E08A2E', bg: '#FCF1E3', title: '조이 피니티 시그니처 절충형 유모차', desc: '신규 프로모션이 등록되었습니다', time: '12시간 전', productId: 'p5' }
+    ];
+    var changesList = changesRaw.map(function (c) {
+      return Object.assign({}, c, {
+        onClick: function () { if (c.productId) { self.openDetail('promotion', c.productId); } }
+      });
+    });
+
+    var noticeList = noticesData.map(function (n) {
+      var confirmed = !!s.confirmedNotices[n.id];
+      return Object.assign({}, n, {
+        showConfirmBadge: n.requiresConfirmation && !confirmed,
+        onClick: function () { self.openDetail('notice', n.id); }
+      });
+    });
+
+    var trainingList = trainingData.map(function (t) {
+      var completed = !!s.completedTraining[t.id];
+      return Object.assign({}, t, {
+        completed: completed,
+        onClick: function () { self.openDetail('training', t.id); }
+      });
+    });
+
+    var eventCampaign = { name: '링크맘 가을 유모차 페어', period: '9/20 ~ 10/4', count: eventData.length };
+
+    var detail = s.detail;
+    var showDetail = !!detail;
+    var isPromotionDetail = showDetail && detail.kind === 'promotion';
+    var isNoticeDetail = showDetail && detail.kind === 'notice';
+    var isTrainingDetail = showDetail && detail.kind === 'training';
+    var isRecentChanges = showDetail && detail.kind === 'changes';
+
+    var detailTitle = '';
+    if (isPromotionDetail) detailTitle = '상품 상세';
+    if (isNoticeDetail) detailTitle = '공지 상세';
+    if (isTrainingDetail) detailTitle = '교육자료 상세';
+    if (isRecentChanges) detailTitle = '최근 변경사항';
+
+    var dp = findProduct(isPromotionDetail ? detail.id : 'p1');
+    var isEventProduct = eventData.indexOf(dp) !== -1;
+    var detailPromotion = {
+      typeLabel: isEventProduct ? '행사' : '상시',
+      typeColor: isEventProduct ? '#8B4FA6' : '#1B9C85',
+      typeBg: isEventProduct ? '#F5EBF8' : '#E6FAF5',
+      period: dp.period || (isEventProduct ? eventCampaign.period : '상시'),
+      brand: dp.brand,
+      name: dp.name,
+      colors: dp.colors || '단일 컬러',
+      consumerPriceFmt: self.fmt(dp.consumerPrice),
+      hasBasePrice: !!dp.basePrice && dp.basePrice !== dp.consumerPrice,
+      basePriceFmt: self.fmt(dp.basePrice || dp.consumerPrice),
+      cardPriceFmt: self.fmt(dp.cardPrice),
+      cashPriceFmt: self.fmt(dp.cashPrice),
+      hasComponents: !!dp.components,
+      components: dp.components,
+      giftLabel: isEventProduct ? '행사 사은품' : '증정 사은품',
+      gift: dp.gift || '-',
+      hasPhotoReview: !!dp.photoReview,
+      photoReview: dp.photoReview,
+      storeNote: dp.storeNote,
+      storePromo: dp.storePromo,
+      hasRemark: !!dp.remark,
+      remark: dp.remark
+    };
+
+    var dn = noticesData.filter(function (n) { return n.id === (isNoticeDetail ? detail.id : 'no1'); })[0] || noticesData[0];
+    var dnConfirmed = !!s.confirmedNotices[dn.id];
+    var detailNotice = Object.assign({}, dn, {
+      confirmed: dnConfirmed,
+      notConfirmed: dn.requiresConfirmation && !dnConfirmed,
+      confirmHandler: function () { self.confirmNotice(dn.id); }
+    });
+
+    var dt = trainingData.filter(function (t) { return t.id === (isTrainingDetail ? detail.id : 't1'); })[0] || trainingData[0];
+    var dtCompleted = !!s.completedTraining[dt.id];
+    var detailTraining = Object.assign({}, dt, {
+      completed: dtCompleted,
+      notCompleted: !dtCompleted,
+      completeHandler: function () { self.completeTraining(dt.id); }
+    });
+
+    var homeChangesPreview = changesList.slice(1, 3);
+
+    var requiredNoticeSrc = noticesData[1];
+    var requiredNoticeConfirmed = !!s.confirmedNotices[requiredNoticeSrc.id];
+
+    return {
+      showDetail: showDetail,
+      showList: !showDetail,
+      isPromotionDetail: isPromotionDetail,
+      isNoticeDetail: isNoticeDetail,
+      isTrainingDetail: isTrainingDetail,
+      isRecentChanges: isRecentChanges,
+      detailTitle: detailTitle,
+      detailPromotion: detailPromotion,
+      detailNotice: detailNotice,
+      detailTraining: detailTraining,
+      changesList: changesList,
+      closeDetail: function () { self.closeDetail(); },
+
+      isHome: !showDetail && s.tab === 'home',
+      isPromotions: !showDetail && s.tab === 'promotions',
+      isNotices: !showDetail && s.tab === 'notices',
+      isTraining: !showDetail && s.tab === 'training',
+      isMy: !showDetail && s.tab === 'my',
+
+      isPermanentSub: s.promoSub === 'permanent',
+      isEventSub: s.promoSub === 'event',
+      isNewSub: s.promoSub === 'new',
+
+      goHome: function () { self.goTo('home'); },
+      goPromotions: function () { self.goTo('promotions'); },
+      goNotices: function () { self.goTo('notices'); },
+      goTraining: function () { self.goTo('training'); },
+      goMy: function () { self.goTo('my'); },
+      goEventPromotions: function () { self.goToEvent(); },
+      openRecentChanges: function () { self.openDetail('changes', null); },
+
+      setPermanentSub: function () { self.setSub('permanent'); },
+      setEventSub: function () { self.setSub('event'); },
+      setNewSub: function () { self.setSub('new'); },
+
+      permanentPillBg: s.promoSub === 'permanent' ? 'var(--purple)' : 'var(--card)',
+      permanentPillColor: s.promoSub === 'permanent' ? '#FFFFFF' : 'var(--text2)',
+      eventPillBg: s.promoSub === 'event' ? 'var(--purple)' : 'var(--card)',
+      eventPillColor: s.promoSub === 'event' ? '#FFFFFF' : 'var(--text2)',
+      newPillBg: s.promoSub === 'new' ? 'var(--purple)' : 'var(--card)',
+      newPillColor: s.promoSub === 'new' ? '#FFFFFF' : 'var(--text2)',
+
+      homeColor: s.tab === 'home' && !showDetail ? '#B673CA' : '#A39CAC',
+      promoColor: s.tab === 'promotions' && !showDetail ? '#B673CA' : '#A39CAC',
+      noticeColor: s.tab === 'notices' && !showDetail ? '#B673CA' : '#A39CAC',
+      trainingColor: s.tab === 'training' && !showDetail ? '#B673CA' : '#A39CAC',
+      myColor: s.tab === 'my' && !showDetail ? '#B673CA' : '#A39CAC',
+
+      hasNoticeUnread: noticesData.some(function (n) { return n.requiresConfirmation && !s.confirmedNotices[n.id]; }),
+      hasTrainingUnread: trainingData.some(function (t) { return t.required && !s.completedTraining[t.id]; }),
+
+      urgentNotice: { title: noticesData[0].title, onClick: function () { self.openDetail('notice', noticesData[0].id); } },
+      eventCampaign: eventCampaign,
+      homeChangesPreview: homeChangesPreview,
+      statPermanentCount: '188',
+      statEventCount: '1',
+      statLastSync: '오늘 14:32',
+      requiredNotice: {
+        title: requiredNoticeSrc.title,
+        notConfirmed: !requiredNoticeConfirmed,
+        onClick: function () { self.openDetail('notice', requiredNoticeSrc.id); }
+      },
+      newTraining: { brand: trainingData[0].brand, name: trainingData[0].name, onClick: function () { self.openDetail('training', trainingData[0].id); } },
+
+      permanentList: permanentList,
+      eventList: eventList,
+      newList: newList,
+      noticeList: noticeList,
+      trainingList: trainingList,
+
+      pushTrackBg: s.pushEnabled ? 'var(--purple)' : '#D9D5DE',
+      pushKnobLeft: s.pushEnabled ? '22px' : '2px',
+      togglePush: function () { self.togglePush(); }
+    };
+  }
+}
+</script>
+</body>
+</html>
