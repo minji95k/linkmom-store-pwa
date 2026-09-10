@@ -34,6 +34,19 @@ export type NoticeType =
 
 export type NoticeTargetType = "all" | "store" | "role" | "user";
 
+export type PromotionType = "permanent" | "event";
+export type ChangeImportance = "critical" | "important" | "minor";
+export type PromotionChangeType =
+  | "new_product"
+  | "price"
+  | "promotion"
+  | "benefit"
+  | "gift"
+  | "event_period"
+  | "store_operation"
+  | "configuration"
+  | "minor_edit";
+
 export interface Database {
   public: {
     Tables: {
@@ -182,18 +195,256 @@ export interface Database {
         };
         Relationships: [];
       };
+      promotions: {
+        Row: {
+          id: string;
+          product_id: string;
+          legacy_softr_record_id: string | null;
+          promotion_type: PromotionType;
+          brand: string;
+          product_name: string;
+          color: string[];
+          period_label: string | null;
+          notice_type: string | null;
+          consumer_price: number | null;
+          base_sale_price: number | null;
+          final_price_card: number | null;
+          final_price_cash: number | null;
+          store_operation_note: string | null;
+          default_components: string | null;
+          gift: string | null;
+          photo_review_benefit: string | null;
+          store_promotion_allowed: string | null;
+          remarks: string | null;
+          extra_fields: Record<string, Json>;
+          is_active: boolean;
+          last_important_change_at: string | null;
+          source_row_updated_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          legacy_softr_record_id?: string | null;
+          promotion_type: PromotionType;
+          brand: string;
+          product_name: string;
+          color?: string[];
+          period_label?: string | null;
+          notice_type?: string | null;
+          consumer_price?: number | null;
+          base_sale_price?: number | null;
+          final_price_card?: number | null;
+          final_price_cash?: number | null;
+          store_operation_note?: string | null;
+          default_components?: string | null;
+          gift?: string | null;
+          photo_review_benefit?: string | null;
+          store_promotion_allowed?: string | null;
+          remarks?: string | null;
+          extra_fields?: Record<string, Json>;
+          is_active?: boolean;
+          last_important_change_at?: string | null;
+          source_row_updated_at?: string | null;
+        };
+        Update: {
+          legacy_softr_record_id?: string | null;
+          brand?: string;
+          product_name?: string;
+          color?: string[];
+          period_label?: string | null;
+          notice_type?: string | null;
+          consumer_price?: number | null;
+          base_sale_price?: number | null;
+          final_price_card?: number | null;
+          final_price_cash?: number | null;
+          store_operation_note?: string | null;
+          default_components?: string | null;
+          gift?: string | null;
+          photo_review_benefit?: string | null;
+          store_promotion_allowed?: string | null;
+          remarks?: string | null;
+          extra_fields?: Record<string, Json>;
+          is_active?: boolean;
+          last_important_change_at?: string | null;
+          source_row_updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      promotion_field_definitions: {
+        Row: {
+          id: string;
+          field_key: string;
+          is_core: boolean;
+          source_sheet: PromotionType | null;
+          source_column_name: string | null;
+          display_label: string;
+          display_order: number;
+          data_type: string;
+          is_visible: boolean;
+          is_searchable: boolean;
+          is_filterable: boolean;
+          change_importance: ChangeImportance;
+          push_enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          field_key: string;
+          is_core?: boolean;
+          source_sheet?: PromotionType | null;
+          source_column_name?: string | null;
+          display_label: string;
+          display_order?: number;
+          data_type?: string;
+          is_visible?: boolean;
+          is_searchable?: boolean;
+          is_filterable?: boolean;
+          change_importance?: ChangeImportance;
+          push_enabled?: boolean;
+        };
+        Update: {
+          display_label?: string;
+          display_order?: number;
+          data_type?: string;
+          is_visible?: boolean;
+          is_searchable?: boolean;
+          is_filterable?: boolean;
+          change_importance?: ChangeImportance;
+          push_enabled?: boolean;
+        };
+        Relationships: [];
+      };
+      promotion_change_logs: {
+        Row: {
+          id: string;
+          promotion_id: string;
+          product_id: string;
+          changed_field: string;
+          before_value: Json | null;
+          after_value: Json | null;
+          change_type: PromotionChangeType;
+          importance: ChangeImportance;
+          source_sheet: PromotionType;
+          changed_at: string;
+        };
+        Insert: {
+          id?: string;
+          promotion_id: string;
+          product_id: string;
+          changed_field: string;
+          before_value?: Json | null;
+          after_value?: Json | null;
+          change_type: PromotionChangeType;
+          importance: ChangeImportance;
+          source_sheet: PromotionType;
+          changed_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      event_campaigns: {
+        Row: {
+          id: string;
+          campaign_name: string;
+          campaign_key: string;
+          start_at: string | null;
+          end_at: string | null;
+          is_visible: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_name: string;
+          campaign_key: string;
+          start_at?: string | null;
+          end_at?: string | null;
+          is_visible?: boolean;
+        };
+        Update: {
+          campaign_name?: string;
+          start_at?: string | null;
+          end_at?: string | null;
+          is_visible?: boolean;
+        };
+        Relationships: [];
+      };
+      event_campaign_products: {
+        Row: {
+          id: string;
+          campaign_id: string;
+          promotion_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          campaign_id: string;
+          promotion_id: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      sync_logs: {
+        Row: {
+          id: string;
+          source_sheet: PromotionType;
+          started_at: string;
+          finished_at: string | null;
+          success: boolean | null;
+          inserted_count: number;
+          updated_count: number;
+          deactivated_count: number;
+          failed_count: number;
+          error_detail: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          source_sheet: PromotionType;
+          started_at?: string;
+          finished_at?: string | null;
+          success?: boolean | null;
+          inserted_count?: number;
+          updated_count?: number;
+          deactivated_count?: number;
+          failed_count?: number;
+          error_detail?: Json | null;
+        };
+        Update: {
+          finished_at?: string | null;
+          success?: boolean | null;
+          inserted_count?: number;
+          updated_count?: number;
+          deactivated_count?: number;
+          failed_count?: number;
+          error_detail?: Json | null;
+        };
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      event_campaigns_visible: {
+        Row: Database["public"]["Tables"]["event_campaigns"]["Row"];
+        Relationships: [];
+      };
+    };
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean };
       is_store_manager: { Args: Record<string, never>; Returns: boolean };
       has_store_access: { Args: { target_store_id: string }; Returns: boolean };
       current_role: { Args: Record<string, never>; Returns: UserRole };
+      next_product_id: { Args: Record<string, never>; Returns: string };
     };
     Enums: {
       user_role: UserRole;
       notice_type: NoticeType;
       notice_target_type: NoticeTargetType;
+      promotion_type: PromotionType;
+      change_importance: ChangeImportance;
+      promotion_change_type: PromotionChangeType;
     };
   };
 }

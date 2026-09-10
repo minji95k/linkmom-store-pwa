@@ -11,7 +11,10 @@
     "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts",
     "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
     "db:seed:clean": "node --env-file=.env.local --import tsx scripts/clean.ts",
-    "test:rls": "node --env-file=.env.local --import tsx scripts/test-rls.ts"
+    "db:clean:promotions": "node --env-file=.env.local --import tsx scripts/clean-promotions.ts",
+    "test:rls": "node --env-file=.env.local --import tsx scripts/test-rls.ts",
+    "test:sync": "node --env-file=.env.local --import tsx scripts/test-sync.ts",
+    "test:promotion-rls": "node --env-file=.env.local --import tsx scripts/test-promotion-rls.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

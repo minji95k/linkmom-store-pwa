@@ -41,8 +41,13 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+  // /api/* 는 쿠키 세션이 아니라 자체 인증을 쓴다(예: /api/sync/* 는 Google Apps
+  // Script가 SYNC_API_SECRET Bearer 토큰으로 호출 — 로그인 세션이 없는 게 정상이다).
+  // 여기서 /login으로 리다이렉트하면 API 호출이 깨지므로 각 Route Handler의 자체
+  // 인증 검사에 맡긴다(verifySyncSecret 등).
+  const isApiPath = request.nextUrl.pathname.startsWith("/api/");
 
-  if (!user && !isPublicPath) {
+  if (!user && !isPublicPath && !isApiPath) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);

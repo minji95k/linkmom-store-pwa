@@ -59,6 +59,16 @@
 - **STORE_MANAGER의 유일한 추가 권한은 "전체 매장(용인본점+동백점)의 프로모션 전체 조회"뿐이다.** 소속 매장에 관계없이 프로모션(상시+행사) 데이터는 전체를 보되, 공지/교육자료 등 그 외 기능은 STAFF와 동일하게 소속 매장 범위로 제한된다. 이는 매장이 늘어나도 "전체"로 자동 확장되는 Role 기반 예외이며 특정 매장명을 조건에 하드코딩하지 않는다. 상세: [permissions.md](docs/permissions.md) §1, §3.
 - (미결정) 공지유형/매장별운영 등 자유 텍스트 필드 표기 표준화 여부 — 1차 버전은 시스템이 trim/공백정규화로 흡수하는 것을 기본값으로 진행한다.
 
+## Phase 6 구현 메모 (Promotion Sync)
+
+- **DEV Supabase 프로젝트는 새 테이블마다 GRANT를 명시적으로 해줘야 한다.** `alter default privileges`를 한 번 걸어뒀지만(20260909120500_grants.sql), 안전하게 매번 새 테이블 migration 끝에 `grant all on <table> to anon, authenticated, service_role;`을 추가하는 패턴을 계속 따른다 — Phase 5/6 둘 다 이 GRANT 없이는 `permission denied`가 났다.
+- **`src/proxy.ts`는 `/api/*` 경로를 세션 리다이렉트 대상에서 제외한다.** Sync API처럼 Bearer 토큰으로 자체 인증하는 Route Handler를 proxy가 `/login`으로 리다이렉트해버리는 버그가 실제로 있었다 — 새 API Route를 추가할 때 이 예외를 건드리지 않는다.
+- **PostgREST에서 RLS가 UPDATE/DELETE 대상 행을 0건으로 만들면 `error`가 나지 않는다** — 그냥 0건 성공으로 응답한다. RLS 쓰기 차단을 테스트할 때는 `.select()`로 실제 반환된 행 수와 Service Role로 재조회한 DB 값을 함께 확인해야 한다(단순히 `error` 유무만 보면 오탐이 난다 — 실제로 겪음).
+- **`event_campaigns.campaign_key`는 Spreadsheet의 `행사명` 값을 trim한 문자열 그대로다.** 같은 행사명을 쓰는 여러 Row가 자동으로 같은 캠페인으로 묶인다.
+- Sync에서 셀 값이 빈 문자열이거나 `"-"`이면 전부 `null`로 정규화한다(실측 데이터 패턴, `src/lib/sync/engine.ts`의 `normalizeCellText`).
+- `product_id`는 `next_product_id()` Postgres Sequence로 채번(`PROD-000001`식) — 최초 Import든 신규 Row 추가든 "product_id가 비어있다"는 동일 조건으로 처리하며 별도 분기를 두지 않는다.
+- Sync 테스트: `npm run test:sync`(파이프라인 End-to-End, 로컬 dev server 필요), `npm run test:promotion-rls`(Promotion 도메인 RLS), `npm run db:clean:promotions`(테스트 데이터 초기화).
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
