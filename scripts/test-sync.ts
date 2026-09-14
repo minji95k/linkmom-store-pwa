@@ -7,6 +7,13 @@
  * 빠져 있을 뿐, Next.js API → Supabase 구간은 실제 파이프라인 그대로 검증한다.
  * 데이터는 docs/current-system-analysis.md에서 실측한 실제 상품 값을 그대로 쓴다.
  *
+ * ⚠️ 이 스크립트는 실제 DEV Supabase(실 Google Sheet에서 동기화된 진짜 상품이 있는
+ * 그 DB)를 대상으로 실행된다. sync_mode 기본값이 "partial"이므로 이 테스트가 실 데이터를
+ * 비활성화할 일은 구조적으로 없지만(§9a/§9b), 테스트가 만드는 상품 Row 자체는 실 데이터
+ * 옆에 섞여 들어간다 — 그래서 main() 마지막에 이번 실행이 만든 product_id/campaign만
+ * 정확히 골라 반드시 정리한다(격리된 fixture 전략, 2026-09-11 대량 비활성화 사고 이후
+ * requirement #7). 실 데이터는 절대 건드리지 않는다.
+ *
  * 사전 조건: npm run dev (localhost:3000)가 실행 중이어야 한다.
  * 실행: npm run test:sync
  */
@@ -153,6 +160,27 @@ function kidfix(productId: string | null, gift: string) {
   };
 }
 
+function joy(productId: string | null) {
+  return {
+    "행사 기간": "상시",
+    브랜드: "조이",
+    제품명: "피니티 시그니처 절충형 유모차",
+    컬러: "샌드스톤/에보니",
+    공지유형: null,
+    소비자가: 620000,
+    "기준 판매가": 553000,
+    "최종 판매가 (카드결제)": 553000,
+    "최종판매가 (현금or계좌이체)": 525350,
+    "매장 별 운영": "모두 운영",
+    "기본 구성품": "어댑터, 레인커버, 기저귀가방, 컵홀더",
+    증정사은품: "-",
+    포토후기: "N페이 1만원 상품권",
+    매장프로모션: "가능",
+    비고: null,
+    product_id: productId,
+  };
+}
+
 async function getPromotion(productId: string) {
   const { data } = await db.from("promotions").select("*").eq("product_id", productId).single();
   return data;
@@ -167,7 +195,52 @@ async function getChangeLogs(productId: string) {
   return data ?? [];
 }
 
+const TEST_DYNAMIC_FIELD_KEY = "permanent__택배배송_여부"; // dynamicHeader("택배배송 여부")가 자동 생성하는 field_key
+
+/**
+ * 이 스크립트가 만든 테스트 Row/캠페인/Dynamic Field 정의를 실 데이터와 절대
+ * 섞이지 않도록 실행 종료 시 반드시 제거한다(격리된 fixture 전략, requirement #7).
+ * 성공/실패/예외 어느 경우든 반드시 호출되도록 main()의 finally에서 실행한다.
+ */
+async function cleanupFixtures(createdProductIds: string[], campaignKey: string | null) {
+  if (createdProductIds.length > 0) {
+    await db.from("promotion_change_logs").delete().in("product_id", createdProductIds);
+  }
+  if (campaignKey) {
+    const { data: campaign } = await db.from("event_campaigns").select("id").eq("campaign_key", campaignKey).maybeSingle();
+    if (campaign) {
+      await db.from("event_campaign_products").delete().eq("campaign_id", campaign.id);
+      await db.from("event_campaigns").delete().eq("id", campaign.id);
+    }
+  }
+  if (createdProductIds.length > 0) {
+    await db.from("promotions").delete().in("product_id", createdProductIds);
+  }
+  await db.from("promotion_field_definitions").delete().eq("field_key", TEST_DYNAMIC_FIELD_KEY);
+  console.log(`\n(정리 완료: 테스트 상품 ${createdProductIds.length}건, 캠페인/Dynamic Field 정의 제거 — 실 데이터는 그대로 유지됨)`);
+}
+
 async function main() {
+  const createdProductIds: string[] = [];
+  let campaignKey: string | null = null;
+  try {
+    await runTests(createdProductIds, (key) => {
+      campaignKey = key;
+    });
+  } finally {
+    await cleanupFixtures(createdProductIds, campaignKey);
+  }
+
+  console.log("\n요약:", results.filter((r) => r.pass).length, "/", results.length, "PASS");
+  const failed = results.filter((r) => !r.pass);
+  if (failed.length > 0) {
+    console.error("\n실패한 테스트:");
+    for (const f of failed) console.error(` - ${f.name} (${f.detail ?? ""})`);
+    process.exit(1);
+  }
+}
+
+async function runTests(createdProductIds: string[], setCampaignKey: (key: string) => void) {
   console.log("=== Permanent sheet ===\n");
 
   // 1) 초기 Import (§13) --------------------------------------------------------
@@ -185,6 +258,7 @@ async function main() {
   const [bellaId, flickId, kidfixId] = r1.body.productIdAssignments.map(
     (a: { productId: string }) => a.productId,
   );
+  createdProductIds.push(bellaId, flickId, kidfixId);
 
   const flickAfterInsert = await getPromotion(flickId);
   record(
@@ -202,6 +276,43 @@ async function main() {
     "2. 동일 값으로 재동기화 — updatedCount 0 (가짜 변경 없음)",
     r2.status === 200 && r2.body.updatedCount === 0 && r2.body.insertedCount === 0,
     JSON.stringify(r2.body),
+  );
+
+  // 2b) Push 소급 발송 방지: 최초 Import 상품 vs 이후 신규 추가 상품 구분 (2026-09-10 확정) --
+  // 주의: 이 DEV permanent Sheet는 실제 Google Sheet E2E Sync로 최초 Import가 이미
+  // 완료되어 promotion_sync_state에 영구 기록되어 있다(§3.1). 그래서 이 테스트가
+  // 지금 새로 만드는 bella도 "최초 Import 상품"이 아니라 "운영 개시 이후 신규 상품"으로
+  // 정확히 판정되는 것이 올바른 동작이다 — is_initial_import는 실행 시점이 아니라
+  // 이 Sheet 타입의 영구 상태를 따르기 때문(Hard Delete 후 재Sync 오판정 방지 설계).
+  const bellaRow = await getPromotion(bellaId);
+  const bellaNewProductLog = (await getChangeLogs(bellaId)).find((l) => l.change_type === "new_product");
+  record(
+    "2b. 최초 Import가 이미 완료된 Sheet — 새 테스트 상품도 is_initial_import=false(운영 개시 이후 신규 취급)",
+    bellaRow?.is_initial_import === false,
+  );
+  record(
+    "2b. 위와 같은 이유로 new_product 로그도 push_eligible=true(실제 Push 대상)",
+    bellaNewProductLog?.push_eligible === true,
+  );
+
+  const r2c = await callSync("permanent", PERMANENT_HEADERS, [
+    { rowNumber: 2, values: bella(bellaId) },
+    { rowNumber: 3, values: flick(flickId, 598000, null) },
+    { rowNumber: 4, values: kidfix(kidfixId, "쿨시트, 발받침대") },
+    { rowNumber: 5, values: joy(null) }, // 최초 Import 이후 새로 추가되는 상품
+  ]);
+  const [joyId] = r2c.body.productIdAssignments.map((a: { productId: string }) => a.productId);
+  createdProductIds.push(joyId);
+  const joyRow = await getPromotion(joyId);
+  const joyNewProductLog = (await getChangeLogs(joyId)).find((l) => l.change_type === "new_product");
+  record(
+    "2c. 최초 Import 이후 새로 추가된 상품 — is_initial_import=false",
+    r2c.body.insertedCount === 1 && joyRow?.is_initial_import === false,
+    JSON.stringify(r2c.body),
+  );
+  record(
+    "2c. 운영 개시 이후 신규 상품의 new_product 로그 — push_eligible=true(실제 Push 대상)",
+    joyNewProductLog?.push_eligible === true,
   );
 
   // 3) 가격 변경 (important) ------------------------------------------------------
@@ -340,23 +451,84 @@ async function main() {
     JSON.stringify(bellaAfterDynamic?.extra_fields),
   );
 
-  // 9) Soft Delete (배치에서 사라진 상품) --------------------------------------------
-  const r9 = await callSync("permanent", PERMANENT_HEADERS, [{ rowNumber: 2, values: bella(bellaId) }]);
-  const flickAfterRemoval = await getPromotion(flickId);
-  const kidfixAfterRemoval = await getPromotion(kidfixId);
-  record(
-    "9. 배치에서 빠진 상품 2건 — Soft Delete(is_active=false), deactivatedCount=2",
-    r9.body.deactivatedCount === 2 && flickAfterRemoval?.is_active === false && kidfixAfterRemoval?.is_active === false,
-    JSON.stringify(r9.body),
-  );
-  record("9. 삭제가 아니라 Row는 그대로 남아있음(Soft Delete)", !!flickAfterRemoval && !!kidfixAfterRemoval);
+  // 9) 대량 비활성화 안전장치 (2026-09-11 실 데이터 사고 이후 도입) -----------------------
+  // sync_mode 기본값은 "partial" — 배치에서 상품이 빠져도 절대 비활성화하지 않는다.
+  // 이 테스트는 실제 사고를 일으켰던 것과 정확히 같은 모양의 payload(전체 중 1건만
+  // 남기고 나머지 다 빠진 상태)를 그대로 재현하되, 이번에는 기본값이 안전하므로
+  // 실 데이터(188건)를 포함해 아무것도 비활성화되지 않아야 한다.
+  const activeBeforeGuardTests = (
+    await db.from("promotions").select("product_id").eq("promotion_type", "permanent").eq("is_active", true)
+  ).data?.length ?? 0;
 
-  // 복구 — 이후 event 테스트에 영향 없도록 원복
-  await callSync("permanent", PERMANENT_HEADERS, [
-    { rowNumber: 2, values: bella(bellaId) },
-    { rowNumber: 3, values: flick(flickId, 568000, null) },
-    { rowNumber: 4, values: kidfix(kidfixId, "쿨시트, 발받침대, 방풍커버(L)") },
-  ]);
+  // 9a) syncMode 미지정(기본값 partial) — 1건만 보내도 나머지는 절대 비활성화되지 않음
+  const r9a = await callSync("permanent", PERMANENT_HEADERS, [{ rowNumber: 2, values: bella(bellaId) }]);
+  const flickAfterPartial = await getPromotion(flickId);
+  const kidfixAfterPartial = await getPromotion(kidfixId);
+  const activeAfterPartial = (
+    await db.from("promotions").select("product_id").eq("promotion_type", "permanent").eq("is_active", true)
+  ).data?.length ?? 0;
+  record(
+    "9a. sync_mode 기본값(partial) — 1건만 보내도 deactivatedCount=0, 나머지는 그대로 활성",
+    r9a.status === 200 &&
+      r9a.body.deactivatedCount === 0 &&
+      r9a.body.deactivationGuard.skipped === true &&
+      flickAfterPartial?.is_active === true &&
+      kidfixAfterPartial?.is_active === true,
+    JSON.stringify(r9a.body),
+  );
+  record(
+    "9a. partial 모드에서는 실 데이터 활성 건수도 절대 변하지 않음(정확한 사고 재현 시나리오)",
+    activeAfterPartial === activeBeforeGuardTests,
+    `before=${activeBeforeGuardTests}, after=${activeAfterPartial}`,
+  );
+
+  // 9b) sync_mode=full_snapshot이지만 1건만 보냄 — 안전장치가 발동해 Sync 자체가
+  // 차단되어야 한다(188건 중 187건이 조용히 사라지는 사고가 다시는 나면 안 된다).
+  const res9b = await fetch(`${API_BASE}/api/sync/permanent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
+    body: JSON.stringify({
+      headers: PERMANENT_HEADERS,
+      rows: [{ rowNumber: 2, values: bella(bellaId) }],
+      sync_mode: "full_snapshot",
+      source_sheet: "permanent",
+    }),
+  });
+  const r9b = { status: res9b.status, body: await res9b.json() };
+  const flickAfterBlockedFullSnapshot = await getPromotion(flickId);
+  const activeAfterBlockedFullSnapshot = (
+    await db.from("promotions").select("product_id").eq("promotion_type", "permanent").eq("is_active", true)
+  ).data?.length ?? 0;
+  record(
+    "9b. full_snapshot인데 나머지가 대부분 누락 — HTTP 409, success=false, deactivationGuard.blocked=true",
+    r9b.status === 409 && r9b.body.success === false && r9b.body.deactivationGuard.blocked === true,
+    JSON.stringify(r9b.body),
+  );
+  record(
+    "9b. 안전장치가 차단했으므로 실제로는 아무것도 비활성화되지 않음(deactivatedCount=0, 실 데이터 그대로)",
+    r9b.body.deactivatedCount === 0 &&
+      flickAfterBlockedFullSnapshot?.is_active === true &&
+      activeAfterBlockedFullSnapshot === activeBeforeGuardTests,
+    `deactivatedCount=${r9b.body.deactivatedCount}, before=${activeBeforeGuardTests}, after=${activeAfterBlockedFullSnapshot}`,
+  );
+
+  // 9c) source_sheet 불일치 — event 엔드포인트인데 sourceSheet="permanent"로 보내면 즉시 실패
+  const res9c = await fetch(`${API_BASE}/api/sync/event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
+    body: JSON.stringify({
+      headers: EVENT_HEADERS,
+      rows: [],
+      sync_mode: "full_snapshot",
+      source_sheet: "permanent",
+    }),
+  });
+  const r9c = { status: res9c.status, body: await res9c.json() };
+  record(
+    "9c. sourceSheet가 호출된 엔드포인트와 다르면 success=false로 즉시 실패",
+    r9c.body.success === false,
+    JSON.stringify(r9c.body),
+  );
 
   console.log("\n=== Event sheet ===\n");
 
@@ -394,6 +566,8 @@ async function main() {
     { rowNumber: 2, values: mimaJarimax(null, "ON", yesterday, nextWeek) },
   ]);
   const [mimaId] = r10.body.productIdAssignments.map((a: { productId: string }) => a.productId);
+  createdProductIds.push(mimaId);
+  setCampaignKey("링크맘 가을 유모차 페어");
   const { data: campaign } = await db
     .from("event_campaigns")
     .select("*")
@@ -454,14 +628,6 @@ async function main() {
     "13. 행사기간을 다시 연장하면 자동으로 노출 재개",
     r13.status === 200 && (visibleAfterExtend ?? []).some((c) => c.id === campaign!.id),
   );
-
-  console.log("\n요약:", results.filter((r) => r.pass).length, "/", results.length, "PASS");
-  const failed = results.filter((r) => !r.pass);
-  if (failed.length > 0) {
-    console.error("\n실패한 테스트:");
-    for (const f of failed) console.error(` - ${f.name} (${f.detail ?? ""})`);
-    process.exit(1);
-  }
 }
 
 main().catch((error) => {

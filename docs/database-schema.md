@@ -63,6 +63,7 @@ Core Field는 실측 Spreadsheet 헤더를 기준으로 매핑한다.
 | remarks | text | 비고 | |
 | extra_fields | jsonb default '{}' | *(향후 신규 컬럼)* | Dynamic Field 저장소 |
 | is_active | boolean default true | — | Soft Delete(빈 Row/제외 대상) |
+| is_initial_import | boolean default false | — | ✅ 확정(2026-09-10, 실 DEV Sheet 188건 Import로 검증): 해당 `promotion_type`의 **첫 Sync**(기존 Row 0건 상태)에서 생성됐는지. Sync 엔진이 자동 판정(수동 플래그 아님). Push 소급 발송 방지 근거 — push-design.md §3.1 |
 | last_important_change_at | timestamptz nullable | — | NEW 판정 기준 (§44) |
 | source_row_updated_at | timestamptz nullable | 수정일(상시만 존재) | 참고용, NEW 판정의 기준으로 직접 사용하지 않음(행사 시트엔 없음 — Sync 자체 diff로 통일) |
 | created_at / updated_at | timestamptz | — | |
@@ -100,9 +101,10 @@ Core Field(브랜드/가격 등)도 이 테이블에 행을 미리 시드해 두
 | change_type | text (`new_product`\|`price`\|`promotion`\|`benefit`\|`gift`\|`event_period`\|`store_operation`\|`configuration`\|`minor_edit`) | |
 | importance | text (`critical`\|`important`\|`minor`) | |
 | source_sheet | text | |
+| push_eligible | boolean default true | ✅ 확정(2026-09-10): Phase 11 Push 발송 필터의 기준 컬럼. `is_initial_import=true`인 상품의 `new_product` 로그는 `false`(기록은 남기되 발송 안 함). `importance`와 별개 축 — push-design.md §3.1 |
 | changed_at | timestamptz default now() | |
 
-인덱스: `(promotion_id, changed_at desc)`, `(importance, changed_at desc)`.
+인덱스: `(promotion_id, changed_at desc)`, `(importance, changed_at desc)`, `(push_eligible, importance, changed_at desc)`.
 
 ## 3. 행사 캠페인
 
@@ -179,6 +181,9 @@ user_id FK (PK), push_enabled boolean, categories jsonb (카테고리별 on/off,
 
 ### `sync_logs`
 id, source_sheet(`permanent`\|`event`), started_at, finished_at, success boolean, inserted_count, updated_count, deactivated_count, failed_count, error_detail jsonb nullable.
+
+### `promotion_sync_state` ✅ 확정(2026-09-11, 실제 Hard Delete 재현 테스트로 검증)
+promotion_type(PK), initial_import_completed_at timestamptz nullable. Sheet 타입별 "최초 Import가 끝났는지"를 나타내는 영구 상태 — `promotions` Row 개수가 아니라 이 테이블로 판정해야 하는 이유는 `is_initial_import` 판정 로직이 단순 "Row 0건 여부"면 Hard Delete 후 재Sync 시 오판정될 수 있기 때문(push-design.md §3.1). `mark_initial_import_completed(promotion_type)` 함수가 COALESCE로 최초 1회만 값을 채우고 이후 절대 덮어쓰지 않는다.
 
 ### `audit_logs`
 id, actor_id FK→profiles, action text, target_table text, target_id text, before jsonb, after jsonb, created_at.

@@ -136,7 +136,8 @@ async function main() {
     record("2. STAFF — 비노출 행사 캠페인 테스트", false, "테스트용 비노출 캠페인 없음 — npm run test:sync 먼저 실행 필요");
   }
 
-  // ---- 3) STORE_MANAGER — 프로모션 도메인은 예외적으로 전체(비노출 캠페인 포함) 조회 가능 ----
+  // ---- 3) STORE_MANAGER — 비노출/종료 캠페인은 ADMIN만 볼 수 있도록 재검토 후 확정
+  //         (Phase 6.5 보안 재검토 — STAFF와 동일하게 "지금 노출 중"인 것만 조회 가능) ----
   if (hiddenCampaign) {
     const { data: managerEvent } = await managerUser.from("promotions").select("id").eq("promotion_type", "event");
     const { data: hiddenProducts } = await admin
@@ -146,14 +147,14 @@ async function main() {
     const hiddenPromotionIds = new Set((hiddenProducts ?? []).map((p) => p.promotion_id));
     const managerCanSeeHidden = (managerEvent ?? []).some((p) => hiddenPromotionIds.has(p.id));
     record(
-      "3. STORE_MANAGER — 비노출 행사 캠페인 상품도 조회 가능 (확정된 예외: 프로모션은 전체 매장/전체 상태 조회)",
-      managerCanSeeHidden,
+      "3. STORE_MANAGER — 비노출 행사 캠페인 상품은 안 보임(ADMIN 전용으로 재확정)",
+      !managerCanSeeHidden,
     );
   }
   const { data: managerCampaigns } = await managerUser.from("event_campaigns").select("id");
   record(
-    "3. STORE_MANAGER — event_campaigns 전체(비노출 포함) 조회 가능",
-    (managerCampaigns?.length ?? 0) === (allEventCampaigns?.length ?? -1),
+    "3. STORE_MANAGER — event_campaigns는 노출 중인 것만 조회(비노출 제외)",
+    (managerCampaigns?.length ?? -1) < (allEventCampaigns?.length ?? -1),
     `manager=${managerCampaigns?.length}, total=${allEventCampaigns?.length}`,
   );
 
@@ -183,10 +184,11 @@ async function main() {
     });
     record("5. STAFF — promotions 직접 INSERT 시도는 거부됨", !!error, `error=${error?.message}`);
   }
-  // 주의: PostgREST에서 RLS가 UPDATE 대상 행을 0건으로 만들면 "error" 없이
-  // 그냥 0건 성공으로 응답한다(행이 없어서 아무 것도 못 바꿨을 뿐 "거부됨" 오류가
-  // 아니다). 그래서 error 유무가 아니라 .select()로 실제 반환된 행 수 +
-  // Service Role로 재조회한 실제 DB 값이 그대로인지를 함께 확인해야 한다.
+  // 주의: 쓰기가 막히는 방식은 두 가지다 — (a) GRANT 자체가 없어 "permission
+  // denied" 에러가 나거나, (b) GRANT는 있지만 RLS가 대상 행을 0건으로 만들어
+  // 에러 없이 조용히 0건 성공으로 응답하는 경우. 둘 다 "쓰기가 막혔다"는 유효한
+  // 결과이므로 error 유무만으로 판정하지 않고, 항상 Service Role로 재조회한
+  // 실제 DB 값이 그대로인지로 최종 판정한다.
   {
     const { data: anyPromo } = await admin.from("promotions").select("id, brand").limit(1).single();
     const originalBrand = anyPromo!.brand;
@@ -196,9 +198,11 @@ async function main() {
       .eq("id", anyPromo!.id)
       .select();
     const { data: recheck } = await admin.from("promotions").select("brand").eq("id", anyPromo!.id).single();
+    const blockedByError = !!error;
+    const blockedByRls = !error && (updateResult?.length ?? 0) === 0;
     record(
       "5. ADMIN 역할이어도 (Secret Key 없는) authenticated 세션으로는 promotions UPDATE 불가 — Sync는 오직 Service Role",
-      !error && (updateResult?.length ?? 0) === 0 && recheck?.brand === originalBrand,
+      (blockedByError || blockedByRls) && recheck?.brand === originalBrand,
       `error=${error?.message}, affectedRows=${updateResult?.length}, dbValueUnchanged=${recheck?.brand === originalBrand}`,
     );
   }

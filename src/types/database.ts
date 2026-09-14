@@ -218,6 +218,7 @@ export interface Database {
           remarks: string | null;
           extra_fields: Record<string, Json>;
           is_active: boolean;
+          is_initial_import: boolean;
           last_important_change_at: string | null;
           source_row_updated_at: string | null;
           created_at: string;
@@ -245,6 +246,7 @@ export interface Database {
           remarks?: string | null;
           extra_fields?: Record<string, Json>;
           is_active?: boolean;
+          is_initial_import?: boolean;
           last_important_change_at?: string | null;
           source_row_updated_at?: string | null;
         };
@@ -328,6 +330,7 @@ export interface Database {
           change_type: PromotionChangeType;
           importance: ChangeImportance;
           source_sheet: PromotionType;
+          push_eligible: boolean;
           changed_at: string;
         };
         Insert: {
@@ -340,6 +343,7 @@ export interface Database {
           change_type: PromotionChangeType;
           importance: ChangeImportance;
           source_sheet: PromotionType;
+          push_eligible?: boolean;
           changed_at?: string;
         };
         Update: Record<string, never>;
@@ -424,6 +428,22 @@ export interface Database {
         };
         Relationships: [];
       };
+      promotion_sync_state: {
+        Row: {
+          promotion_type: PromotionType;
+          initial_import_completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          promotion_type: PromotionType;
+          initial_import_completed_at?: string | null;
+        };
+        Update: {
+          initial_import_completed_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       event_campaigns_visible: {
@@ -437,6 +457,7 @@ export interface Database {
       has_store_access: { Args: { target_store_id: string }; Returns: boolean };
       current_role: { Args: Record<string, never>; Returns: UserRole };
       next_product_id: { Args: Record<string, never>; Returns: string };
+      mark_initial_import_completed: { Args: { p_promotion_type: PromotionType }; Returns: undefined };
     };
     Enums: {
       user_role: UserRole;

@@ -62,13 +62,26 @@ function syncSheet(sourceSheetKey) {
     Logger.log('[' + sheetName + '] 보낼 데이터가 없습니다.');
     return;
   }
+  // syncPermanentOnly/syncEventOnly/syncAll은 항상 Sheet 전체를 읽어 보내는
+  // 정상적인 전체 Sync이므로 "full_snapshot"을 명시한다 — 이 값이 있어야만
+  // 서버가 누락된 기존 상품을 비활성화 대상으로 검토한다(안전장치 통과 시에만
+  // 실제 비활성화). sourceSheet도 같이 보내 엔드포인트 불일치를 서버가 걸러내게 한다.
+  payload.sync_mode = 'full_snapshot';
+  payload.source_sheet = sourceSheetKey;
 
   var endpoint = apiBaseUrl.replace(/\/$/, '') + '/api/sync/' + sourceSheetKey;
 
   var response = UrlFetchApp.fetch(endpoint, {
     method: 'post',
     contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + apiSecret },
+    headers: {
+      Authorization: 'Bearer ' + apiSecret,
+      // ngrok 무료 플랜은 브라우저가 아닌 요청(Apps Script의 UrlFetchApp 포함)에
+      // 기본적으로 경고 인터스티셜 HTML을 반환한다 — 이 헤더가 없으면 JSON 대신
+      // 그 경고 페이지가 와서 아래 JSON.parse가 깨진다. DEV 터널 전용이며 실제
+      // 배포(Vercel 등) 앞단에는 ngrok이 없으므로 무해하다.
+      'ngrok-skip-browser-warning': 'true',
+    },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   });
@@ -82,6 +95,13 @@ function syncSheet(sourceSheetKey) {
     return;
   }
 
+  if (status === 409) {
+    Logger.log(
+      '[' + sheetName + '] ⚠️ 대량 비활성화 안전장치 발동 — Sync 중단됨. 관리자 확인 필요: ' +
+        (body.deactivationGuard && body.deactivationGuard.reason),
+    );
+    return;
+  }
   if (status !== 200) {
     Logger.log('[' + sheetName + '] Sync 실패 (HTTP ' + status + '): ' + JSON.stringify(body));
     return;
@@ -146,8 +166,22 @@ function writeBackProductIds_(sheet, assignments) {
     Logger.log('product_id 컬럼을 찾을 수 없어 되쓰기를 건너뜁니다. 헤더에 "product_id" 컬럼을 추가해주세요.');
     return;
   }
+  // 안전장치: payload를 만든 시점과 되쓰는 시점 사이에 사람이 행을 삽입/삭제하면
+  // rowNumber가 다른 상품을 가리킬 수 있다. 그 대상 셀이 여전히 비어있을 때만
+  // 쓴다 — 이미 값이 있다면(이미 채번됐거나 다른 상품이 그 자리로 밀려온 것)
+  // 절대 덮어쓰지 않고 다음 Sync 실행 때 다시 판단하도록 건너뛴다.
+  var written = 0;
   assignments.forEach(function (a) {
-    sheet.getRange(a.rowNumber, productIdCol).setValue(a.productId);
+    var cell = sheet.getRange(a.rowNumber, productIdCol);
+    if (String(cell.getValue()).trim() === '') {
+      cell.setValue(a.productId);
+      written += 1;
+    } else {
+      Logger.log(
+        'Row ' + a.rowNumber + '의 product_id 칸이 비어있지 않아 되쓰기를 건너뜁니다(이미 값 존재: "' +
+          cell.getValue() + '"). 다음 Sync에서 재확인됩니다.',
+      );
+    }
   });
-  Logger.log(productIdCol ? assignments.length + '개 product_id를 시트에 기록했습니다.' : '');
+  Logger.log(written + '/' + assignments.length + '개 product_id를 시트에 기록했습니다.');
 }

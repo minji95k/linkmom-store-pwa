@@ -69,6 +69,28 @@
 - `product_id`는 `next_product_id()` Postgres Sequence로 채번(`PROD-000001`식) — 최초 Import든 신규 Row 추가든 "product_id가 비어있다"는 동일 조건으로 처리하며 별도 분기를 두지 않는다.
 - Sync 테스트: `npm run test:sync`(파이프라인 End-to-End, 로컬 dev server 필요), `npm run test:promotion-rls`(Promotion 도메인 RLS), `npm run db:clean:promotions`(테스트 데이터 초기화).
 
+## Phase 6.5 보안 재검토 (실제 Google Sheet 연동 전, 2026-09-10)
+
+- **View는 기본적으로 RLS를 우회한다 — 이 프로젝트에서 실제로 재현·확인함.** `event_campaigns_visible`은 그동안 View 자체의 WHERE절이 우연히 비노출 캠페인을 걸러내고 있었을 뿐 RLS 덕분이 아니었다(진단용 필터 없는 View로 재현: STAFF가 비노출 캠페인까지 조회 가능했음). **앞으로 promotions 도메인에 View를 새로 만들 때마다 반드시 `security_invoker = on`을 설정한다.** (`alter view ... set (security_invoker = on);`)
+- **PostgREST에서 GRANT 자체가 없으면 "permission denied" 에러, RLS만으로 막히면 에러 없이 0건 성공**이다. 둘 다 유효한 차단이므로 RLS 테스트를 짤 때 error 유무만 보지 말고 항상 Service Role로 재조회해 실제 DB 값이 안 바뀌었는지 확인한다(`scripts/test-promotion-rls.ts` 참조).
+- **anon/authenticated GRANT는 최소 권한으로 좁혔다** — `grant all`이 아니라 SELECT(+필요한 테이블만 UPDATE) 위주로. 상세: docs/permissions.md §6.
+- **STORE_MANAGER의 "프로모션 전체 매장 조회" 예외는 폐기했다** — promotions 자체가 매장별로 분리돼 있지 않아 실질적 차이가 없었고, 유일하게 차이 나던 지점(비노출 행사 캠페인 조회)은 ADMIN 전용으로 좁혔다. 매장별 데이터 분리가 실제로 생기면 다시 검토한다. 상세: docs/permissions.md §1.
+- Apps Script의 product_id 되쓰기(`writeBackProductIds_`)는 대상 셀이 **비어있을 때만** 쓴다 — payload 생성과 되쓰기 사이에 사람이 행을 삽입/삭제해 rowNumber가 밀렸을 가능성에 대한 방어.
+
+## 첫 실제 Google Sheet E2E Sync (2026-09-10) 확인 사항
+
+- DEV Sheet ↔ Apps Script(ngrok) ↔ Sync API ↔ Supabase 전체 경로로 `[상시 프로모션]` 188건을 실제로 Import해 검증 완료. Core Field 매핑·가격 Numeric 저장·product_id 채번+Sheet 되쓰기·Dynamic Field(미검출, extra_fields 전부 `{}`)·Soft Delete·sync_logs 전부 실측 확인됨.
+- **Migration/Initial Import로 생성된 상품은 Push 발송 대상에서 제외한다** (확정, 사용자 지시) — `promotions.is_initial_import` / `promotion_change_logs.push_eligible` 두 컬럼으로 구현·검증 완료. 상세: docs/push-design.md §3.1~3.2.
+- ⚠️ **위 `is_initial_import` 판정을 "promotions Row가 0건인지"로만 봤다가 사용자 재검토로 실수를 잡았다** — Hard Delete 후 재Sync하면 다시 0건이 되어 최초 Import로 오판정될 수 있었다. `promotion_sync_state`(Sheet 타입별 영구 상태, Row가 전부 삭제돼도 유지됨)로 교체했고, 실제로 "최초 Sync → Hard Delete → 재Sync" 시나리오를 재현해 수정 전엔 오판정됨/수정 후엔 정상임을 직접 확인했다. **앞으로 "이 테이블에 데이터가 있는지"로 상태를 판단하는 로직을 새로 만들 때는 항상 이 사례를 참고 — Row 존재 여부는 Hard Delete에 취약하다.**
+- 테스트 스크립트(`test:sync`, `test:promotion-rls`)는 `promotions`에 실제 라이브 데이터가 들어간 뒤로는 **`npm run db:clean:promotions`를 함부로 실행하면 안 된다** — 실제 Sheet에서 온 데이터까지 지워버린다. 앞으로 이 스크립트들을 실 데이터가 있는 DB에서 돌릴 땐 `event` 타입처럼 아직 비어있는 영역을 쓰거나, 별도 정리 로직으로 테스트 Row만 골라 지운다(product_id 접두사나 특정 브랜드명으로 식별).
+
+## 대량 비활성화 사고 및 `sync_mode` 안전장치 도입 (2026-09-11)
+
+- **실제로 벌어진 사고**: 위 항목의 경고를 실제로 어겼다 — `updated_at` 불필요 갱신 버그 수정을 검증한다며 1건짜리 테스트 payload를 실 라이브 `/api/sync/permanent`에 직접 보냈고, 당시 "이번 Sync에 없는 기존 product_id는 무조건 비활성화"하던 Soft Delete 로직이 아무 안전장치 없이 실행되어 실 데이터 188건 중 187건이 전부 `is_active=false`가 됐다. 즉시 발견(응답의 `deactivatedCount:188`)해 전량 재활성화 + 오류 change_log 삭제 + 테스트 상품 제거로 완전 복구했지만, 사용자에게 전체 경위를 투명하게 보고했다.
+- **재발 방지 설계**: `sync_mode`(`full_snapshot`/`partial`, 기본값 `partial`) 도입. **partial(기본값)에서는 Soft Delete 로직 자체를 아예 실행하지 않는다** — 그 어떤 payload를 보내도 누락된 상품을 건드릴 수 없다. Apps Script의 정상 전체 Sheet Sync(`syncPermanentOnly`/`syncEventOnly`/`syncAll`)만 명시적으로 `full_snapshot`을 보내며, 그때도 Row parse 실패 여부 + 누락 비율(50% 초과)/절대값(50건 초과) 임계치를 모두 통과해야만 실제 비활성화가 실행된다. 상세 설계: docs/sync-design.md §10, 구현: `src/lib/sync/safety.ts` + `engine.ts`.
+- **테스트가 실 데이터를 위험하게 만들 수 있다는 교훈**: 이 사고 자체가 "테스트/검증 목적의 API 호출"이 원인이었다. 이후로는 (1) 안전장치의 판정 로직은 DB를 전혀 쓰지 않는 순수 함수 단위 테스트로 분리해 검증하고(`scripts/test-sync-safety.ts`), (2) 실 API 통합 테스트는 "비활성화가 실행되지 않는" 방향만 실 데이터로 검증하며(기본값 partial 안전성, full_snapshot 안전장치 차단), "정상적으로 비활성화가 성공하는" 경로는 실 데이터를 재구성해 섞는 방식 자체가 또 다른 사고 벡터가 될 수 있어 의도적으로 실 DEV DB 대상 검증 범위에서 제외했다. **테스트 스크립트가 실 데이터가 있는 도메인에 새로운 검증을 추가할 때는 항상 "이 테스트가 실패하거나 버그가 있으면 최악의 경우 무엇이 깨지는가"를 먼저 따져보고, 그 최악의 경우가 되돌릴 수 없는 것이면 순수 함수 분리나 격리된 fixture로 우회한다.**
+- `test-sync.ts`는 이제 실행 종료 시(성공/실패/예외 무관) `main()`의 `finally`에서 자신이 만든 테스트 상품/캠페인/Dynamic Field 정의를 스스로 정리한다 — 매 실행마다 실 데이터 옆에 테스트 잔여물이 쌓이지 않는다.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

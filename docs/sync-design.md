@@ -57,7 +57,7 @@ Apps Script는 Service Role Key를 절대 보유하지 않는다(§16).
 ## 5. Multi-sheet Sync 규칙
 
 - **Upsert 기준**: `product_id`(또는 마이그레이션 과도기엔 `legacy_softr_record_id`)로 매칭 → 있으면 UPDATE, 없으면 INSERT
-- **삭제/비활성**: 이번 Sync 페이로드에 없는 기존 `product_id`는 즉시 삭제하지 않고 `is_active=false` (Soft Delete). 전체 삭제 후 재등록 방식 금지(§18).
+- **삭제/비활성**: 이번 Sync 페이로드에 없는 기존 `product_id`는 즉시 삭제하지 않고 `is_active=false` (Soft Delete). 전체 삭제 후 재등록 방식 금지(§18). **단, 이 비활성화 자체가 `sync_mode=full_snapshot`이고 안전장치를 통과했을 때만 실행된다 — §11 참조(2026-09-11 대량 비활성화 사고 이후 도입).**
 - **빈 Row**: 브랜드/제품명이 모두 공백이면 무시.
 - **중복 product_id**: 같은 배치 내 중복 발견 시 해당 Row는 Error로 처리하고 나머지는 계속 진행, `sync_logs.error_detail`에 기록.
 - **잘못된 가격값**: 숫자 파싱 실패 시 해당 Row Validation Error 처리, 이전 값 유지(덮어쓰지 않음).
@@ -105,7 +105,43 @@ Admin 화면 표시 예:
 - 목표: Spreadsheet 저장 → Apps Script Trigger(수 초~수 분 내) → Supabase 반영 → 열려있는 PWA는 Supabase Realtime 구독으로 자동 갱신 Toast, 닫혀있으면 다음 접속 시 최신 데이터.
 - 모든 테이블을 Realtime 구독하지 않고 `promotions`, `event_campaigns`, `notices` 등 갱신 신호가 필요한 테이블만 선별 구독(§20).
 
-## 10. 재배포 없이 반영되는 것 vs 개발이 필요한 것
+## 10. 대량 비활성화 안전장치 (`sync_mode`) ✅ 확정 (2026-09-11 실 데이터 사고 이후 도입)
+
+### 사고 경위
+
+Phase 6.5 실 데이터 검증 도중, `updated_at` 불필요 갱신 버그를 고치고 이를 실 API로 재검증하려고 1건짜리 테스트 payload를 실제 `/api/sync/permanent`에 직접 보냈다. 당시 "이번 Sync 페이로드에 없는 기존 product_id는 비활성화"라는 §5 규칙이 **무조건, 별도 안전장치 없이** 실행되고 있었기 때문에, 실 데이터 188건 중 187건이 그 자리에서 전부 `is_active=false`로 비활성화되는 사고가 발생했다. 즉시 발견해 전량 복구했지만, 이 사고를 계기로 "누락 = 비활성화"라는 구조 자체를 재설계했다.
+
+### 설계
+
+Sync Request에 `sync_mode` 필드를 도입한다(`SyncRequestBody.sync_mode`, `src/lib/sync/types.ts` / `validate-request.ts`):
+
+```
+sync_mode = "full_snapshot" | "partial"   (기본값: "partial")
+```
+
+- **`partial`(기본값)**: 이 payload가 전체 목록이라는 보장이 없다는 뜻. §5의 Soft Delete 로직 **자체를 실행하지 않는다** — 누락된 기존 product_id가 있어도 절대 건드리지 않는다. 직접 API 호출·부분 재전송·재시도 등 "전체가 아닐 수 있는" 모든 경우를 기본적으로 안전하게 만든다.
+- **`full_snapshot`**: 이 payload가 해당 Sheet 타입의 전체 상품 목록이라는 명시적 보장. Apps Script의 정상적인 전체 Sheet Sync(`syncPermanentOnly`, `syncEventOnly`, `syncAll` — `apps-script/Sync.gs`)만 이 값을 보낸다. 이때만, 그것도 아래 안전장치를 모두 통과했을 때만 Soft Delete를 실행한다.
+
+`source_sheet` 필드(`"permanent" | "event"`)도 함께 도입해, 발신측이 "이 payload는 이 Sheet용이다"를 스스로 명시하게 한다. 지정됐는데 호출된 엔드포인트와 다르면 Sync 자체를 즉시 실패시킨다(잘못된 Sheet의 payload가 엉뚱한 엔드포인트로 들어오는 사고 방지).
+
+### `full_snapshot`에서만 적용되는 안전장치 (`src/lib/sync/safety.ts`, `engine.ts`)
+
+`full_snapshot`이고 누락된 기존 product_id가 1건이라도 있으면, 실제 비활성화 전에 아래를 순서대로 확인한다. 하나라도 걸리면 **비활성화를 전혀 실행하지 않고, 이번 Sync 실행 자체를 실패(`success:false`, HTTP 409)로 기록**한다 — 일부만 처리하고 조용히 성공으로 보고하지 않는다.
+
+1. **Row parse 성공 여부**: 이번 실행에서 Row 파싱/검증 실패(`errors.length > 0`)가 하나라도 있으면 이 payload를 "전체 목록"으로 신뢰할 수 없다고 보고 중단.
+2. **누락 비율/절대값 임계치** (`evaluateDeactivationSafety`): 기존 활성 상품 대비 누락 비율이 **50% 초과**이거나, 누락 절대값이 **50건 초과**이면 중단. 둘 중 하나만 넘어도 차단한다(예: 188건 중 187건 누락 — 비율 99.5%, 절대값 187건, 둘 다 초과 → 즉시 중단). 임계치는 `SYNC_DEACTIVATION_MAX_RATIO` / `SYNC_DEACTIVATION_MAX_ABSOLUTE` 환경변수로 조정 가능(기본 0.5 / 50).
+
+안전장치를 통과하면 기존과 동일하게 누락된 product_id를 `is_active=false`로 비활성화하고 `promotion_change_logs`에 기록한다.
+
+응답(`SyncResponseBody.deactivationGuard`)에 항상 판정 결과를 담아 반환한다: `skipped`(partial이라 아예 시도 안 함), `blocked`(full_snapshot인데 안전장치가 막음), `reason`, `missingCount`, `missingRatio`. `apps-script/Sync.gs`는 HTTP 409를 별도로 로그에 남겨 담당자가 바로 원인을 알 수 있게 한다.
+
+### 테스트 전략 — 실 데이터를 절대 건드리지 않는 격리된 검증
+
+- **순수 함수 단위 테스트** (`scripts/test-sync-safety.ts`, `npm run test:sync:safety`): 안전장치의 판정 로직(`evaluateDeactivationSafety`)을 DB/네트워크 없이 순수 배열/Set 값만으로 검증한다. 실제 사고와 동일한 시나리오(188건 중 1건만 존재)를 포함해 임계치 경계값까지 전부 커버 — 안전장치 자체가 잘못돼도 이 테스트는 절대 실 데이터에 영향을 줄 수 없다.
+- **API 통합 테스트** (`scripts/test-sync.ts` §9a/§9b/§9c, `npm run test:sync`): 기본값 `partial`로는 실 데이터를 포함한 어떤 payload를 보내도 비활성화가 발생하지 않음을 실 DEV 환경에서 직접 검증하고(§9a, 실제 사고를 안전하게 재현), `full_snapshot`으로 누락 비율이 큰 payload를 보내도 안전장치가 막아 실 데이터가 전혀 바뀌지 않음을 검증한다(§9b). 두 경로 모두 "비활성화가 실행되지 않는" 방향만 실 데이터로 검증하므로 구조적으로 안전하다. 이 스크립트가 만드는 테스트 상품/캠페인/Dynamic Field 정의는 실행 종료 시(성공/실패 무관) `main()`의 `finally`에서 반드시 정리되어, 실 데이터 옆에 테스트 잔여물이 남지 않는다.
+- **의도적으로 실 데이터와 섞어 `full_snapshot`의 성공적인 비활성화(정상 케이스)까지 실 DEV DB에서 end-to-end로 검증하지는 않았다** — 실 상품 전량을 재구성해 payload에 포함시키는 방식은 재구성 로직에 버그가 있을 경우 그 자체가 사고가 될 수 있어, 이번 사고의 심각성을 고려해 의도적으로 범위에서 제외했다. 해당 코드 경로(누락분만 반복문으로 비활성화)는 안전장치 도입 이전부터 있던 로직 그대로이며, 안전장치 통과 여부만 새로 추가됐다.
+
+## 11. 재배포 없이 반영되는 것 vs 개발이 필요한 것
 
 | 재배포 불필요 | 추가 개발 필요 |
 |---|---|

@@ -9,6 +9,9 @@
 - `SYNC_API_SECRET` (아래 1번에서 생성)
 - Next.js 앱이 배포된 URL, 또는 로컬 테스트라면 `ngrok` 등으로 외부에 노출한 `http://localhost:3000` 터널 URL
   (Google 서버가 `UrlFetchApp.fetch()`로 호출하므로 `localhost` 자체는 접근 불가하다)
+  - ngrok 무료 플랜을 쓰면 `Sync.gs`가 요청에 `ngrok-skip-browser-warning` 헤더를 이미
+    붙이고 있다 — 이게 없으면 ngrok이 JSON 대신 경고 인터스티셜 HTML을 돌려줘서 응답
+    파싱이 깨진다. 실제 배포 URL(Vercel 등)을 쓰면 이 헤더는 그냥 무시되니 신경 쓰지 않아도 된다.
 
 ## 1. SYNC_API_SECRET 생성
 

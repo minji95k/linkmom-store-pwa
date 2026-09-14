@@ -12,7 +12,26 @@ import {
   resolveCampaignField,
   resolveCoreField,
 } from "./core-fields";
-import type { ProductIdAssignment, SyncRequestBody, SyncResponseBody, SyncRowError } from "./types";
+import { DEFAULT_DEACTIVATION_SAFETY, evaluateDeactivationSafety } from "./safety";
+import type {
+  DeactivationGuardReport,
+  ProductIdAssignment,
+  SyncRequestBody,
+  SyncResponseBody,
+  SyncRowError,
+} from "./types";
+
+function deactivationSafetyOptions() {
+  const maxRatioEnv = Number(process.env.SYNC_DEACTIVATION_MAX_RATIO);
+  const maxAbsoluteEnv = Number(process.env.SYNC_DEACTIVATION_MAX_ABSOLUTE);
+  return {
+    maxRatio: Number.isFinite(maxRatioEnv) && maxRatioEnv > 0 ? maxRatioEnv : DEFAULT_DEACTIVATION_SAFETY.maxRatio,
+    maxAbsolute:
+      Number.isFinite(maxAbsoluteEnv) && maxAbsoluteEnv > 0
+        ? maxAbsoluteEnv
+        : DEFAULT_DEACTIVATION_SAFETY.maxAbsolute,
+  };
+}
 
 const TEXT_CORE_FIELDS = [
   "period_label",
@@ -72,6 +91,17 @@ export async function runPromotionSync(
   let insertedCount = 0;
   let updatedCount = 0;
   let deactivatedCount = 0;
+  // 기본값은 항상 "partial" — 누락된 기존 상품을 비활성화하지 않는 안전한 모드다.
+  // 정상적인 전체 Sheet Sync(syncPermanentOnly/syncEventOnly/syncAll)만 명시적으로
+  // "full_snapshot"을 보낸다(2026-09-11 대량 비활성화 사고 이후 도입).
+  const syncMode = body.sync_mode ?? "partial";
+  const deactivationGuard: DeactivationGuardReport = {
+    skipped: syncMode !== "full_snapshot",
+    blocked: false,
+    reason: null,
+    missingCount: 0,
+    missingRatio: 0,
+  };
 
   const { data: syncLog, error: syncLogError } = await db
     .from("sync_logs")
@@ -84,6 +114,16 @@ export async function runPromotionSync(
   const syncLogId = syncLog.id;
 
   try {
+    // source_sheet / promotion_type 일치 확인 — 발신측이 명시했는데 호출된
+    // 엔드포인트(permanent/event)와 다르면 즉시 중단한다. 잘못된 Sheet의
+    // payload가 엉뚱한 엔드포인트로 들어와 대량 비활성화를 일으키는 사고를
+    // 원천 차단하기 위한 안전장치다.
+    if (body.source_sheet && body.source_sheet !== sheet) {
+      throw new Error(
+        `source_sheet 불일치: 요청은 "${body.source_sheet}"이지만 "${sheet}" 엔드포인트로 호출되었습니다.`,
+      );
+    }
+
     // --- 참조 데이터 미리 로드 -------------------------------------------------
     const { data: fieldDefs, error: fieldDefsError } = await db
       .from("promotion_field_definitions")
@@ -106,6 +146,19 @@ export async function runPromotionSync(
     if (existingError) throw new Error(`기존 promotions 조회 실패: ${existingError.message}`);
     const existingByProductId = new Map<string, NonNullable<typeof existingPromotions>[number]>();
     for (const row of existingPromotions ?? []) existingByProductId.set(row.product_id, row);
+
+    // 이 Sheet 타입의 "최초 Import가 이미 끝났는지"는 promotions Row 개수가
+    // 아니라 promotion_sync_state의 영구 상태로 판단한다 — Row 개수로 판정하면
+    // 누군가 promotions를 통째로 지웠을 때(Hard Delete) 다음 Sync가 다시 "최초
+    // Import"로 오판정될 수 있기 때문이다(사용자 재검토로 발견, 2026-09-11).
+    // 한 번 완료로 기록되면 promotions가 전부 삭제되어도 이 값은 그대로 유지된다.
+    const { data: syncState, error: syncStateError } = await db
+      .from("promotion_sync_state")
+      .select("*")
+      .eq("promotion_type", sheet)
+      .maybeSingle();
+    if (syncStateError) throw new Error(`promotion_sync_state 조회 실패: ${syncStateError.message}`);
+    const isInitialImportRun = !syncState?.initial_import_completed_at;
 
     const campaignByKey = new Map<string, { id: string; is_visible: boolean; start_at: string | null; end_at: string | null }>();
     if (sheet === "event") {
@@ -254,6 +307,7 @@ export async function runPromotionSync(
               remarks: (corePatch.remarks as string | null) ?? null,
               extra_fields: extraFields as Record<string, Json>,
               last_important_change_at: new Date().toISOString(),
+              is_initial_import: isInitialImportRun,
             })
             .select("id")
             .single();
@@ -273,6 +327,9 @@ export async function runPromotionSync(
             change_type: "new_product",
             importance: "important",
             source_sheet: sheet,
+            // Initial Import(최초 Sync)로 생성된 상품은 Push 소급 발송 대상에서
+            // 제외한다 — 기록은 남기되 push_eligible=false (확정 사항, 2026-09-10).
+            push_eligible: !isInitialImportRun,
           });
         } else {
           promotionId = existing.id;
@@ -294,13 +351,18 @@ export async function runPromotionSync(
             "color",
           ] as const;
 
+          // 실제로 값이 달라진 필드만 updatePatch에 담는다 — 그래야 "아무것도 안
+          // 바뀐 Row"는 UPDATE 문 자체를 안 쏘고, updated_at도 그대로 유지된다.
+          // (예전엔 Row에 그 헤더가 있기만 하면 값이 같아도 무조건 담아서, 아무
+          // 변경 없는 재Sync에도 188개 UPDATE가 매번 나가는 문제가 있었다 —
+          // 실제 DEV Sheet로 "동일값 재Sync" 테스트를 하다 발견.)
           const updatePatch: Record<string, unknown> = {};
           for (const field of CORE_COMPARE_FIELDS) {
             if (!(field in corePatch)) continue; // 이 Row에 해당 헤더가 아예 없으면 건드리지 않는다
             const newValue = corePatch[field];
             const oldValue = (existing as Record<string, unknown>)[field];
-            updatePatch[field] = newValue;
             if (!isEqual(newValue, oldValue)) {
+              updatePatch[field] = newValue;
               changed.push({
                 fieldKey: field,
                 before: (oldValue ?? null) as Json,
@@ -316,8 +378,10 @@ export async function runPromotionSync(
           const newExtra = extraFields;
           const oldExtra = (existing.extra_fields ?? {}) as Record<string, string>;
           const extraKeys = new Set([...Object.keys(newExtra), ...Object.keys(oldExtra)]);
+          let extraChanged = false;
           for (const key of extraKeys) {
             if (newExtra[key] !== oldExtra[key]) {
+              extraChanged = true;
               changed.push({
                 fieldKey: key,
                 before: (oldExtra[key] ?? null) as Json,
@@ -327,7 +391,7 @@ export async function runPromotionSync(
               });
             }
           }
-          updatePatch.extra_fields = newExtra;
+          if (extraChanged) updatePatch.extra_fields = newExtra;
 
           if (!existing.is_active) {
             updatePatch.is_active = true; // 시트에 다시 나타나면 재활성화
@@ -431,8 +495,37 @@ export async function runPromotionSync(
     }
 
     // ---- Soft delete: 이번 Sync에 없는 기존 product_id ---------------------------
-    for (const [productId, existing] of existingByProductId) {
-      if (!seenInPayload.has(productId) && existing.is_active) {
+    // partial(기본값)에서는 이 블록을 절대 실행하지 않는다 — 누락된 기존 상품이
+    // 있어도 그대로 둔다. full_snapshot에서만, 그것도 아래 안전장치를 모두
+    // 통과했을 때만 비활성화한다(2026-09-11 대량 비활성화 사고로 도입).
+    const missingProductIds = [...existingByProductId.entries()]
+      .filter(([productId, existing]) => existing.is_active && !seenInPayload.has(productId))
+      .map(([productId]) => productId);
+    deactivationGuard.missingCount = missingProductIds.length;
+    const existingActiveCount = [...existingByProductId.values()].filter((p) => p.is_active).length;
+    deactivationGuard.missingRatio = existingActiveCount > 0 ? missingProductIds.length / existingActiveCount : 0;
+
+    if (syncMode === "full_snapshot" && missingProductIds.length > 0) {
+      // 전체 Row parse 성공 여부 확인: Row 파싱/검증 실패가 하나라도 있으면
+      // 이 payload는 "전체 목록"이라고 신뢰할 수 없다 — 대량 비활성화를 막는다.
+      if (errors.length > 0) {
+        deactivationGuard.blocked = true;
+        deactivationGuard.reason = `Row 파싱/검증 실패 ${errors.length}건이 존재해 대량 비활성화를 중단합니다 — 관리자 확인이 필요합니다.`;
+      } else {
+        const existingActiveIds = [...existingByProductId.values()]
+          .filter((p) => p.is_active)
+          .map((p) => p.product_id);
+        const safety = evaluateDeactivationSafety(existingActiveIds, seenInPayload, deactivationSafetyOptions());
+        if (safety.blocked) {
+          deactivationGuard.blocked = true;
+          deactivationGuard.reason = safety.reason;
+        }
+      }
+    }
+
+    if (syncMode === "full_snapshot" && missingProductIds.length > 0 && !deactivationGuard.blocked) {
+      for (const productId of missingProductIds) {
+        const existing = existingByProductId.get(productId)!;
         const { error: deactivateError } = await db
           .from("promotions")
           .update({ is_active: false })
@@ -453,11 +546,19 @@ export async function runPromotionSync(
       }
     }
 
+    // 안전장치가 대량 비활성화를 막았다면, 이 Sync 실행 자체를 실패로 기록한다
+    // (침묵 속에 일부만 처리하고 성공으로 보고하지 않는다 — 관리자가 sync_logs/
+    // errors를 보고 원인을 파악하고 Sheet 데이터를 확인해야 한다).
+    const guardBlockedSync = deactivationGuard.blocked;
+    if (guardBlockedSync && deactivationGuard.reason) {
+      errors.push({ rowNumber: 0, message: deactivationGuard.reason });
+    }
+
     await db
       .from("sync_logs")
       .update({
         finished_at: new Date().toISOString(),
-        success: true,
+        success: !guardBlockedSync,
         inserted_count: insertedCount,
         updated_count: updatedCount,
         deactivated_count: deactivatedCount,
@@ -466,15 +567,24 @@ export async function runPromotionSync(
       })
       .eq("id", syncLogId);
 
+    // 이번 실행이 성공적으로 끝났으니 "이 Sheet 타입의 최초 Import 완료"를
+    // 영구 기록한다 — 이미 기록돼 있으면 DB 함수 내부의 COALESCE가 그대로 보존한다.
+    // 안전장치가 막은 실행은 완료로 간주하지 않는다.
+    if (!guardBlockedSync) {
+      await db.rpc("mark_initial_import_completed", { p_promotion_type: sheet });
+    }
+
     return {
-      success: true,
+      success: !guardBlockedSync,
       syncLogId,
+      syncMode,
       insertedCount,
       updatedCount,
       deactivatedCount,
       failedCount: errors.length,
       errors,
       productIdAssignments,
+      deactivationGuard,
     };
   } catch (fatalError) {
     const message = fatalError instanceof Error ? fatalError.message : String(fatalError);
@@ -494,12 +604,14 @@ export async function runPromotionSync(
     return {
       success: false,
       syncLogId,
+      syncMode,
       insertedCount,
       updatedCount,
       deactivatedCount,
       failedCount: errors.length,
       errors: [...errors, { rowNumber: 0, message: `Sync 실패: ${message}` }],
       productIdAssignments,
+      deactivationGuard,
     };
   }
 }

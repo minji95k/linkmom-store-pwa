@@ -14,6 +14,7 @@
     "db:clean:promotions": "node --env-file=.env.local --import tsx scripts/clean-promotions.ts",
     "test:rls": "node --env-file=.env.local --import tsx scripts/test-rls.ts",
     "test:sync": "node --env-file=.env.local --import tsx scripts/test-sync.ts",
+    "test:sync:safety": "node --import tsx scripts/test-sync-safety.ts",
     "test:promotion-rls": "node --env-file=.env.local --import tsx scripts/test-promotion-rls.ts"
   },
   "dependencies": {
