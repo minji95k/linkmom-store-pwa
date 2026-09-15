@@ -91,6 +91,15 @@
 - **테스트가 실 데이터를 위험하게 만들 수 있다는 교훈**: 이 사고 자체가 "테스트/검증 목적의 API 호출"이 원인이었다. 이후로는 (1) 안전장치의 판정 로직은 DB를 전혀 쓰지 않는 순수 함수 단위 테스트로 분리해 검증하고(`scripts/test-sync-safety.ts`), (2) 실 API 통합 테스트는 "비활성화가 실행되지 않는" 방향만 실 데이터로 검증하며(기본값 partial 안전성, full_snapshot 안전장치 차단), "정상적으로 비활성화가 성공하는" 경로는 실 데이터를 재구성해 섞는 방식 자체가 또 다른 사고 벡터가 될 수 있어 의도적으로 실 DEV DB 대상 검증 범위에서 제외했다. **테스트 스크립트가 실 데이터가 있는 도메인에 새로운 검증을 추가할 때는 항상 "이 테스트가 실패하거나 버그가 있으면 최악의 경우 무엇이 깨지는가"를 먼저 따져보고, 그 최악의 경우가 되돌릴 수 없는 것이면 순수 함수 분리나 격리된 fixture로 우회한다.**
 - `test-sync.ts`는 이제 실행 종료 시(성공/실패/예외 무관) `main()`의 `finally`에서 자신이 만든 테스트 상품/캠페인/Dynamic Field 정의를 스스로 정리한다 — 매 실행마다 실 데이터 옆에 테스트 잔여물이 쌓이지 않는다.
 
+## onEdit 즉시 반영 Trigger 도입 (2026-09-14)
+
+- **단순(simple) `onEdit(e)` 트리거는 `UrlFetchApp`을 쓸 수 없다** — Apps Script가 권한이 필요한 서비스 호출을 인증되지 않은 단순 트리거에서는 막는다. 그래서 Sheet 수정에 반응해 API를 호출해야 하는 로직은 반드시 **설치형(installable) 트리거**(`ScriptApp.newTrigger(...).forSpreadsheet(ss).onEdit().create()`)로 등록해야 한다 — 사람이 최초 한 번 실행해 권한을 승인해야 동작한다.
+- **디바운스는 "매 편집마다 타이머 리셋"이 아니라 "고정 윈도우 배칭"으로 구현했다** — 첫 편집 시점에 한 번만 지연 트리거를 예약하고, 그 창 안에 들어오는 추가 편집은 Row 목록에만 누적한다. 순수 debounce는 계속 편집이 이어지면 반영이 무한정 밀릴 수 있어 "가능한 한 빠르게 반영"이라는 목표와 맞지 않다.
+- Google Apps Script의 1회성 시간 기반 트리거(`.timeBased().after(ms).create()`)는 실행 후 자동으로 삭제된다 — 디바운스용 트리거를 직접 지울 필요가 없다.
+- **스크립트가 `Range.setValue()`로 쓴 값은 onEdit을 발생시키지 않는 것이 Apps Script의 공식 동작**이다(product_id write-back이 Loop를 유발하지 않는 근거). 다만 이 프로젝트는 "가정하지 말고 직접 확인" 원칙을 지키므로, `WRITEBACK_IN_PROGRESS_<sheet>` Script Property 플래그로 이중 방어를 걸어두고, 실제 설치 후 반드시 실행 로그로 재발이 없는지 확인한다(`apps-script/README.md` §9).
+- Partial Sync(수정된 Row만 전송)는 §대량 비활성화 안전장치 항목의 `sync_mode="partial"` 덕분에 구조적으로 안전하다 — onEdit 경로를 아무리 자주/작게 호출해도 비활성화 로직 자체가 실행되지 않는다. 안전장치는 10분 Full Snapshot 경로에만 적용된다.
+- ⚠️ **처음엔 `sync_logs`에 `sync_mode`를 기록하지 않았다** — 2026-09-15 실 Secret 교체 검증 중 사용자가 "이 실행이 partial인지 full_snapshot인지 DB로 확인해달라"고 요청했을 때, `inserted/updated/deactivated_count`만으로는 두 모드를 구분할 수 없다는 게 드러났다("1건만 변경된 full_snapshot"과 "1건짜리 partial"이 카운트상 동일). `sync_mode`/`received_row_count` 컬럼을 추가(`20260915090000_sync_logs_mode_and_row_count.sql`)해 해결했다. **앞으로 요청의 어떤 속성(모드, 트리거 종류 등)을 사후 감사에서 구분해야 할 가능성이 있다면, 카운트/결과값만 로그에 남기지 말고 그 속성 자체를 처음부터 명시적으로 기록한다.**
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

@@ -93,6 +93,7 @@ Header 순회 시 아래 컬럼은 **Dynamic Field 자동 생성 대상에서 �
 
 `sync_logs`에 시트별로 다음을 기록:
 - source_sheet(permanent/event), 실행시각, 성공여부, 신규/수정/비활성/실패 건수, 실패 사유, 마지막 정상 Sync 시각
+- `sync_mode`(full_snapshot/partial), `received_row_count` — 이 실행이 어떤 모드로 몇 행을 받았는지. §11의 onEdit Partial/10분 Full Snapshot 두 경로가 실제로 도입된 뒤, "이 실행이 partial이었는지 full_snapshot이었는지"를 Apps Script 실행 로그가 아니라 DB만으로 사후 확인할 수 있어야 한다는 필요가 2026-09-15 Secret 교체 검증 과정에서 실제로 드러나 추가했다(`20260915090000_sync_logs_mode_and_row_count.sql`). 요청 접수 시점에 즉시 기록되므로 source_sheet 불일치로 인한 즉시 실패 건도 남는다.
 
 Admin 화면 표시 예:
 ```
@@ -141,7 +142,58 @@ sync_mode = "full_snapshot" | "partial"   (기본값: "partial")
 - **API 통합 테스트** (`scripts/test-sync.ts` §9a/§9b/§9c, `npm run test:sync`): 기본값 `partial`로는 실 데이터를 포함한 어떤 payload를 보내도 비활성화가 발생하지 않음을 실 DEV 환경에서 직접 검증하고(§9a, 실제 사고를 안전하게 재현), `full_snapshot`으로 누락 비율이 큰 payload를 보내도 안전장치가 막아 실 데이터가 전혀 바뀌지 않음을 검증한다(§9b). 두 경로 모두 "비활성화가 실행되지 않는" 방향만 실 데이터로 검증하므로 구조적으로 안전하다. 이 스크립트가 만드는 테스트 상품/캠페인/Dynamic Field 정의는 실행 종료 시(성공/실패 무관) `main()`의 `finally`에서 반드시 정리되어, 실 데이터 옆에 테스트 잔여물이 남지 않는다.
 - **의도적으로 실 데이터와 섞어 `full_snapshot`의 성공적인 비활성화(정상 케이스)까지 실 DEV DB에서 end-to-end로 검증하지는 않았다** — 실 상품 전량을 재구성해 payload에 포함시키는 방식은 재구성 로직에 버그가 있을 경우 그 자체가 사고가 될 수 있어, 이번 사고의 심각성을 고려해 의도적으로 범위에서 제외했다. 해당 코드 경로(누락분만 반복문으로 비활성화)는 안전장치 도입 이전부터 있던 로직 그대로이며, 안전장치 통과 여부만 새로 추가됐다.
 
-## 11. 재배포 없이 반영되는 것 vs 개발이 필요한 것
+## 11. 자동 Sync 즉시 반영 — onEdit 트리거 + 디바운스 + Full Snapshot Safety Net ✅ 확정 (2026-09-14)
+
+§3의 "Spreadsheet onEdit / 5~10분 주기 Trigger"를 실제로 구현했다. 10분 주기 `syncAll`만으로는
+최대 10분의 반영 지연이 생기므로, 담당자가 Spreadsheet를 수정하면 **수 초 내로** 반영되도록
+두 개의 독립적인 트리거 경로를 둔다(`apps-script/Sync.gs`).
+
+### 경로 1 — 설치형 onEdit 트리거 (기본 경로, `sync_mode: "partial"`)
+
+- `[상시 프로모션]`/`[행사 프로모션]` 시트가 수정되면 **설치형(installable)** onEdit 트리거
+  `handleEditTrigger`가 실행된다. 단순(simple) `onEdit(e)` 트리거는 `UrlFetchApp` 같은 인증이
+  필요한 서비스를 쓸 수 없어(Apps Script 권한 제약) 설치형으로만 구현 가능하다 — 사람이
+  `installOnEditTrigger()`를 한 번 실행해야 등록된다.
+- `handleEditTrigger`는 API를 즉시 부르지 않는다. 수정된 Row 번호만 Script Properties에
+  누적하고, 아직 flush가 예약돼 있지 않으면 `DEBOUNCE_DELAY_MS`(기본 3초) 뒤에 실행될
+  1회성 트리거(`flushPendingSync`)를 예약한다 — 같은 Row를 짧은 시간에 여러 셀 고쳐도
+  Sync API가 여러 번 불리지 않도록 하는 마이크로배칭이다. `LockService`로 동시 실행 시
+  Property 값이 깨지지 않게 보호한다.
+  - 순수 debounce(매 편집마다 타이머를 리셋)가 아니라 **고정 윈도우 배칭**을 선택했다 —
+    편집이 계속 이어지면 순수 debounce는 반영이 무한히 밀릴 수 있는데, 고정 윈도우는
+    첫 편집 후 항상 최대 `DEBOUNCE_DELAY_MS` 내에 반영을 보장한다("가능한 한 빠르게
+    반영"이라는 목표에 더 부합).
+- 예약된 시점에 `flushPendingSync` → `flushPendingSyncForSheet_`가 그 사이 누적된 Row
+  번호들을 **flush 시점 기준 최신 셀 값으로 다시 읽어** payload를 구성하고, `sync_mode:
+  "partial"`, `source_sheet: <sheet>`로 `/api/sync/permanent`(또는 `/event`)를 호출한다.
+  다른 Sheet의 수정은 `handleEditTrigger` 진입부에서 즉시 무시되어 API 호출 자체가 없다.
+- **partial이므로 §10의 비활성화 로직 자체가 실행되지 않는다** — 수정된 몇 개 Row만
+  보내는 이 경로가 실수로 나머지 상품을 비활성화할 구조적 가능성이 없다.
+
+### 경로 2 — 10분 주기 syncAll (Safety Net, `sync_mode: "full_snapshot"`)
+
+- 기존 `installTriggers()`로 등록하는 `syncAll` 10분 주기 트리거를 그대로 유지한다. onEdit
+  트리거는 Apps Script 재시작/일시적 오류/Quota 등으로 간헐적으로 누락될 수 있으므로, 이
+  경로가 전체 Sheet를 주기적으로 다시 읽어 놓친 변경을 되찾아온다.
+- 이 경로만 `sync_mode: "full_snapshot"`을 보내고, §10의 안전장치(Row parse 확인,
+  누락 비율/절대값 임계치)를 전부 통과해야 실제 비활성화가 일어난다 — onEdit 경로의
+  잦은 호출과 무관하게 안전장치는 이 경로에서만, 항상 동일하게 적용된다.
+
+### product_id write-back과 Loop 방지
+
+- 신규 Row(product_id 빈칸)가 Partial Sync로 처리되면 서버가 채번한 product_id를 기존과
+  동일한 `writeBackProductIds_`가 해당 셀에 되쓴다. 이 되쓰기 자체가 다시 `handleEditTrigger`를
+  유발해 무한 Loop가 되지 않도록, 되쓰는 동안 Script Properties에 `WRITEBACK_IN_PROGRESS_
+  <sheet>` 플래그를 세워두고 `handleEditTrigger` 진입부에서 이 플래그가 있으면 즉시 무시한다.
+  Apps Script 공식 동작상 스크립트가 직접 쓴 셀 값 변경은 onEdit을 발생시키지 않는 것이
+  정상이라 이 플래그 없이도 Loop가 나지 않아야 하지만, 설치 후 실제로 한 번은 실행 로그로
+  직접 재발이 없는지 확인한다(`apps-script/README.md` §4 "Loop 방지 확인" / §9 체크리스트).
+- Row 번호는 payload 구성 시점과 되쓰기 시점 사이에 사람이 행을 삽입/삭제하면 다른 상품을
+  가리킬 수 있다(기존 Full Snapshot 경로와 동일한 한계). 대상 셀이 비어있을 때만 쓰는 기존
+  방어가 그대로 적용되고, 설사 이 Row 번호 드리프트로 되쓰기가 한 번 건너뛰어져도 10분
+  Full Snapshot Safety Net이 product_id 기준으로 다시 확인해 정합성을 맞춘다.
+
+## 12. 재배포 없이 반영되는 것 vs 개발이 필요한 것
 
 | 재배포 불필요 | 추가 개발 필요 |
 |---|---|

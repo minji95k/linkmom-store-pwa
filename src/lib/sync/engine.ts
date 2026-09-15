@@ -105,7 +105,10 @@ export async function runPromotionSync(
 
   const { data: syncLog, error: syncLogError } = await db
     .from("sync_logs")
-    .insert({ source_sheet: sheet })
+    // sync_mode/received_row_count는 처리 성공/실패와 무관하게 요청을 받은 시점에
+    // 바로 알 수 있으므로 최초 insert 시점에 기록한다 — source_sheet 불일치 등으로
+    // 즉시 실패하는 경우에도 "무슨 모드로 몇 행이 왔었는지"가 감사 목적으로 남는다.
+    .insert({ source_sheet: sheet, sync_mode: syncMode, received_row_count: body.rows.length })
     .select("id")
     .single();
   if (syncLogError || !syncLog) {

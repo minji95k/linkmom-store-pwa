@@ -403,6 +403,9 @@ export interface Database {
           deactivated_count: number;
           failed_count: number;
           error_detail: Json | null;
+          // 2026-09-15 이전 Row는 당시 기록되지 않아 NULL이다(추측으로 채우지 않음).
+          sync_mode: "full_snapshot" | "partial" | null;
+          received_row_count: number | null;
           created_at: string;
         };
         Insert: {
@@ -416,6 +419,8 @@ export interface Database {
           deactivated_count?: number;
           failed_count?: number;
           error_detail?: Json | null;
+          sync_mode?: "full_snapshot" | "partial" | null;
+          received_row_count?: number | null;
         };
         Update: {
           finished_at?: string | null;
@@ -425,6 +430,8 @@ export interface Database {
           deactivated_count?: number;
           failed_count?: number;
           error_detail?: Json | null;
+          sync_mode?: "full_snapshot" | "partial" | null;
+          received_row_count?: number | null;
         };
         Relationships: [];
       };
