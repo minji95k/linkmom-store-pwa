@@ -15,6 +15,9 @@
     "test:rls": "node --env-file=.env.local --import tsx scripts/test-rls.ts",
     "test:sync": "node --env-file=.env.local --import tsx scripts/test-sync.ts",
     "test:sync:safety": "node --import tsx scripts/test-sync-safety.ts",
+    "test:apps-script:retry": "node --import tsx scripts/test-apps-script-retry.ts",
+    "test:apps-script:trigger-lifecycle": "node --import tsx scripts/test-apps-script-trigger-lifecycle.ts",
+    "test:timestamps-equal": "node --import tsx scripts/test-timestamps-equal.ts",
     "test:promotion-rls": "node --env-file=.env.local --import tsx scripts/test-promotion-rls.ts"
   },
   "dependencies": {

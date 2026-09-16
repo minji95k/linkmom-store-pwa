@@ -94,6 +94,7 @@ Header 순회 시 아래 컬럼은 **Dynamic Field 자동 생성 대상에서 �
 `sync_logs`에 시트별로 다음을 기록:
 - source_sheet(permanent/event), 실행시각, 성공여부, 신규/수정/비활성/실패 건수, 실패 사유, 마지막 정상 Sync 시각
 - `sync_mode`(full_snapshot/partial), `received_row_count` — 이 실행이 어떤 모드로 몇 행을 받았는지. §11의 onEdit Partial/10분 Full Snapshot 두 경로가 실제로 도입된 뒤, "이 실행이 partial이었는지 full_snapshot이었는지"를 Apps Script 실행 로그가 아니라 DB만으로 사후 확인할 수 있어야 한다는 필요가 2026-09-15 Secret 교체 검증 과정에서 실제로 드러나 추가했다(`20260915090000_sync_logs_mode_and_row_count.sql`). 요청 접수 시점에 즉시 기록되므로 source_sheet 불일치로 인한 즉시 실패 건도 남는다.
+- `skipped_count`, `skipped_detail` — 브랜드/제품명이 모두 비어있어 §5 규칙대로 정상 스킵된 Row 수와 그 목록(`{rowNumber, message}`). 실패(`failed_count`/`error_detail`)와는 다른 축이다 — 스킵은 의도된 정상 동작이다. 2026-09-16 `syncAll` 검증 중 `received_row_count`(191)와 실제 처리 건수(190)가 어긋났는데 원인을 전혀 알 수 없었던 것을 계기로 추가했다(`20260916020000_sync_logs_skipped_rows.sql`) — 추가한 직후 실제로 이 필드가 "Row 1024, 브랜드/제품명 모두 공백"이라는 정확한 원인을 바로 보여줬다.
 
 Admin 화면 표시 예:
 ```
@@ -193,7 +194,124 @@ sync_mode = "full_snapshot" | "partial"   (기본값: "partial")
   방어가 그대로 적용되고, 설사 이 Row 번호 드리프트로 되쓰기가 한 번 건너뛰어져도 10분
   Full Snapshot Safety Net이 product_id 기준으로 다시 확인해 정합성을 맞춘다.
 
-## 12. 재배포 없이 반영되는 것 vs 개발이 필요한 것
+### 실패/재시도 규칙 ✅ 확정 (2026-09-15 — pending 유실 사고 이후 도입)
+
+**사고 경위**: DEV localhost dev server가 잠깐 내려가 있는 동안 사용자가 실 Sheet를 여러 번
+수정했는데, 당시 `flushPendingSyncForSheet_`가 API 요청을 보내기 **전에** pending Row 목록을
+먼저 지우는 구조였다. 요청이 서버 부재로 실패해도 pending은 이미 사라진 뒤라, 그 편집들이
+onEdit Partial 경로에서 완전히 유실됐다(10분 Full Snapshot Safety Net이 결국 따라잡아 데이터
+자체는 지켜졌지만, "수 초 내 반영"이라는 목표는 지키지 못했다).
+
+**재설계**: pending Row는 **API 요청이 실제로 HTTP 2xx로 성공했을 때만** 지운다. 그 외에는
+실패 사유를 아래처럼 분류해 다르게 처리한다(`classifySyncFailure_`, `apps-script/Sync.gs`):
+
+| 실패 사유 | 재시도 여부 | 처리 |
+|---|---|---|
+| 연결 실패/timeout(네트워크 예외) | 재시도 | pending 유지, 백오프 후 재시도 |
+| 5xx(서버 오류) | 재시도 | pending 유지, 백오프 후 재시도 |
+| 429(Rate Limit) | 재시도 | pending 유지, 백오프 후 재시도 |
+| 응답이 JSON이 아님(ngrok 경고 페이지 등) | 재시도 | pending 유지, 백오프 후 재시도 |
+| 401/403(인증 오류) | 재시도 안 함 | pending 유지, 로그만 남김 — Secret 불일치를 재시도로 해결할 수 없다 |
+| 409(대량 비활성화 안전장치 차단) | 재시도 안 함 | pending 유지, 로그만 남김 — destructive 상황을 자동으로 다시 시도하지 않는다(§10) |
+| 400 등 그 외 4xx(잘못된 요청) | 재시도 안 함 | pending 유지, 로그만 남김 — 같은 payload면 다시 보내도 똑같이 실패한다 |
+
+재시도는 **15초 → 30초 → 60초** 백오프로 최대 3회(총 4회 시도)까지만 허용한다
+(`RETRY_BACKOFF_MS`, `MAX_ATTEMPTS = 4`) — 무한 재시도는 하지 않는다. 재시도 한도를 넘기면
+로그만 남기고 멈춘다 — **pending Row는 여전히 지우지 않으므로**, 이후 같은 Row가 다시
+편집되거나 10분 Full Snapshot Safety Net이 돌면 그때 최종적으로 반영된다. 재시도 카운터는
+두 Sheet가 공유한다(원인이 보통 서버/네트워크처럼 두 Sheet에 공통으로 걸리는 문제이기
+때문 — Sheet별 독립 카운터는 과한 설계로 보고 생략).
+
+재시도 중에도 새 편집이 들어오면 `handleEditTrigger`가 그 Row를 pending에 추가만 하고,
+`flushPendingSync` 트리거가 실제로 이미 존재하는지 직접 확인해 중복 예약하지 않는다(아래
+"트리거 생명주기" 참조 — 2026-09-16부터는 Property 플래그가 아니라 실제 트리거 목록을
+기준으로 판단한다).
+
+**검증 전략**: `classifySyncFailure_`/`nextRetryDelayMs_`는 PropertiesService/UrlFetchApp 등
+Apps Script 전용 서비스에 전혀 의존하지 않는 순수 함수로 작성했다. Apps Script(.gs)는 Node
+환경에서 직접 실행할 수 없으므로, `scripts/test-apps-script-retry.ts`가 동일한 로직을
+복제해 Node에서 격리 테스트한다(DB/네트워크/실 Sheet 전혀 사용 안 함) — 두 곳 중 하나를
+고치면 반드시 함께 고쳐야 한다는 점을 양쪽 파일에 주석으로 명시해뒀다.
+
+### flushPendingSync 트리거 생명주기 ✅ 확정 (2026-09-16 — 재부팅 후 disabled 트리거 누적 사고 이후)
+
+**사고 경위**: 컴퓨터를 재부팅하고 DEV 환경을 다시 연 뒤, Google Apps Script의 트리거 목록에
+"사용 중지됨(disabled)" 상태의 `flushPendingSync` 1회성 트리거가 여러 개 누적돼 있는 것을
+발견했다(사용자가 직접 확인 후 수동으로 전부 삭제). 원인을 완전히 특정하지는 못했다 —
+Google Apps Script가 정확히 어떤 조건에서 1회성 트리거를 "실행 후 즉시 삭제"가 아니라
+"실행 실패로 처리해 비활성화 상태로 남김" 처리하는지는 공식 문서로 완전히 보장되지 않는다.
+그래서 **정확한 원인 규명보다 증상이 재발하지 않도록 코드 스스로 상태를 보증하는 방향**으로
+고쳤다(이 프로젝트의 "가정하지 말고 직접 확인" 원칙과 같은 결의 대응 — 이번엔 "Apps Script가
+알아서 지워줄 것"이라는 가정 자체가 근본 원인이었다).
+
+**재설계**:
+- 기존에는 "예약이 이미 돼 있다"는 판단을 `FLUSH_SCHEDULED`라는 Script Property 플래그로
+  했다. 이 플래그와 실제 트리거 존재 여부가 어긋나면(트리거가 수동으로 지워지거나, Apps
+  Script가 예상과 다르게 처리하는 경우) pending Row가 영원히 flush되지 않고 묶여있을 수
+  있었다. **이 플래그를 완전히 제거**하고, `ScriptApp.getProjectTriggers()`로 실제
+  `flushPendingSync` 트리거가 존재하는지 매번 직접 확인한다(`hasScheduledFlushTrigger_`).
+- `flushPendingSync`는 실행되자마자(자신을 호출한 트리거를 포함해) 동일 handler의 트리거를
+  전부 지운다(`deleteFlushPendingSyncTriggers_`) — "실행된 1회성 트리거는 Apps Script가
+  알아서 지워준다"는 가정에 기대지 않고, 이 함수 자신이 항상 정확히 0개(재시도 불필요) 또는
+  1개(재시도 필요)만 남도록 스스로 보장한다.
+- `installOnEditTrigger()`를 재실행하면 stale `flushPendingSync` 트리거와 관련 Property
+  (`PENDING_ROWS_*`/`WRITEBACK_IN_PROGRESS_*`/`SYNC_RETRY_COUNT`/구버전 `FLUSH_SCHEDULED`)를
+  전부 정리한다(`resetPendingSyncState_`) — 재부팅/재설치 후 "깨끗한 상태로 다시 시작"할 수
+  있는 공식 리셋 경로다. pending Row를 잊어도 안전한 이유: 10분 Full Snapshot Safety Net은
+  이 pending 추적과 무관하게 매번 Sheet 전체를 다시 읽으므로 잊힌 편집도 결국 반영된다.
+
+**평상시 정상 상태**: `handleEditTrigger` 1개, `syncAll` 1개(둘 다 지속 트리거), `flushPendingSync`
+0개. Sheet 수정 후 디바운스/재시도 대기 중인 짧은 순간에만 `flushPendingSync`가 최대 1개
+존재한다.
+
+**검증 전략**: 이 로직은 `ScriptApp`/`PropertiesService`에 의존해 순수 함수로 분리할 수
+없으므로, `scripts/test-apps-script-trigger-lifecycle.ts`가 두 서비스를 최소한의 in-memory
+mock으로 흉내 내 동일한 트리거 생성/정리 로직을 복제해 검증한다(실 Google Sheet/Supabase
+전혀 사용 안 함) — 연속 편집 시 중복 생성 없음, 재시도마다 항상 0/1개, 사고 재현(stale
+트리거가 이미 여러 개 있는 상태)에서도 자가 치유되는지까지 커버한다.
+
+### Apps Script 실행 로그 형식
+
+매 Sync 시도마다 한 줄로 다음을 모두 남긴다: source sheet, `mode`(partial/full_snapshot),
+`rows`(전송한 Row 수), `attempt`(현재 시도/최대 시도), `status`(HTTP 상태 또는 연결실패),
+성공/실패 여부. 예:
+
+```
+[상시 프로모션] Sync attempt=1/4 mode=partial rows=3 status=200 → 성공 — 신규 0, 수정 2, 비활성 0, 실패 0
+[상시 프로모션] Sync attempt=1/4 mode=partial rows=3 status=연결실패 → 실패(network) — ...
+15초 후 Sync 재시도(2/4) 예정.
+[상시 프로모션] Sync attempt=2/4 mode=partial rows=3 status=200 → 성공 — ...
+```
+
+## 13. event_campaigns 변경 감지 — 문자열 비교가 아니라 실제 시각으로 ✅ 확정 (2026-09-16 버그 수정)
+
+**사고 경위**: `event_campaigns`의 변경 감지가
+```ts
+prior.is_visible !== isVisible || prior.start_at !== startAt || prior.end_at !== endAt
+```
+처럼 `start_at`/`end_at`을 **문자열**로 비교하고 있었다. `prior.start_at`은 Supabase(PostgREST)가
+돌려주는 `"2026-09-10T00:00:00+00:00"` 형식이고, `startAt`은 매번 새로 `new Date(startRaw)
+.toISOString()`으로 계산해 항상 `"2026-09-10T00:00:00.000Z"` 형식이 된다 — **같은 시각인데
+문자열 표현이 달라 매 Sync마다(파트너 Row가 있는 한 partial이든 10분 Full Snapshot이든) "변경됨"으로
+오판**했다. 그 결과 실 DEV DB에 캠페인 하나당 불필요한 `campaign_visibility` change_log와
+`last_important_change_at` 갱신이 4일간 **143건** 쌓였다(실제 상태 변경은 4건뿐이었다).
+
+**수정**: `start_at`/`end_at` 비교를 `src/lib/sync/timestamps.ts`의 `timestampsEqual()`(epoch
+값 비교, `+00:00`/`.000Z` 등 표현 차이를 무시)로 바꿨다. `is_visible`은 그대로 boolean 비교.
+`scripts/test-timestamps-equal.ts`가 이 순수 함수를 DB 없이 격리 테스트하고,
+`scripts/test-sync.ts` §14가 "동일 값 재Sync → campaign_visibility 로그 0건, `last_important_
+change_at`/`event_campaigns.updated_at` 둘 다 불필요하게 갱신되지 않음(UPDATE 문 자체가 안
+나감)"을 실 API로 검증한다.
+
+**기존 오염 데이터 정리**(`20260916030000_cleanup_bogus_campaign_visibility_logs.sql`): `before_
+value`/`after_value`를 `timestamptz`로 캐스팅해 비교(텍스트 표현과 무관하게 같은 시각이면
+같다고 판정 — 애플리케이션의 `timestampsEqual`과 동일한 기준)해, **실제로 값이 안 바뀐 로그만**
+정확히 골라 삭제했다(143건 중 139건 삭제, 실제 상태 변경 4건은 보존). 삭제 전에 영향받은
+`promotion_id` 목록을 임시 테이블에 저장해두고, 정리 후 남은(정상) change_log 중 importance가
+important/critical인 것의 최댓값으로 `promotions.last_important_change_at`을 다시 계산했다 —
+`promotions`의 다른 필드나 permanent 상품은 전혀 건드리지 않았다.
+
+## 14. 재배포 없이 반영되는 것 vs 개발이 필요한 것
 
 | 재배포 불필요 | 추가 개발 필요 |
 |---|---|

@@ -33,7 +33,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 3. 편집기의 **기존 코드 전체를 지우고**, 이 저장소의 [`apps-script/Sync.gs`](./Sync.gs) 최신 내용을
    **처음부터 끝까지 통째로** 붙여넣는다(일부만 고쳐 붙이지 않는다 — `handleEditTrigger` /
    `flushPendingSync` / `installOnEditTrigger` 등 새 함수가 추가됐고 내부 함수 몇 개의
-   인자도 바뀌었다). Ctrl+S(💾)로 저장한다.
+   인자도 바뀌었다. 2026-09-15: `sendSyncPayload_`가 이제 구조화된 결과를 반환하며 재시도
+   판정 함수 `classifySyncFailure_`/`nextRetryDelayMs_`가 추가됐다 — 이것도 전체 교체로만
+   반영된다). Ctrl+S(💾)로 저장한다.
 4. 이미 예전 버전이 설치돼 있었다면 아래 "4. 트리거 등록" 단계를 다시 실행해 트리거를 최신
    함수로 갈아끼운다(`installOnEditTrigger`/`installTriggers` 둘 다 기존 동명 트리거를 지우고
    새로 만들도록 되어 있어 여러 번 실행해도 중복 등록되지 않는다).
@@ -57,12 +59,24 @@ Apps Script 편집기에서 프로젝트 설정(톱니바퀴 아이콘) → **�
    - 이제부터 `[상시 프로모션]`/`[행사 프로모션]` 시트를 수정하면 약 3초 후 수정된 Row만
      `sync_mode: "partial"`로 Supabase에 반영된다(`handleEditTrigger` → `flushPendingSync`).
    - 다른 Sheet를 수정해도 아무 API 호출이 발생하지 않는다.
+   - **재부팅/재설치 후에도 언제든 다시 실행해도 안전하다** — 실행할 때마다 기존 `handleEditTrigger`
+     트리거뿐 아니라 stale/disabled 상태로 남아있을 수 있는 `flushPendingSync` 트리거와 관련
+     상태(대기 중이던 Row 목록 등)까지 전부 정리하고 깨끗하게 다시 시작한다(2026-09-16
+     도입 — 아래 "평상시 정상 Trigger 상태" 참고).
 2. 드롭다운에서 **`installTriggers`** 선택 → ▶ 실행.
    - 이후 `syncAll()`이 10분마다 자동 실행되며 두 시트 전체를 `sync_mode: "full_snapshot"`으로
      다시 Sync한다 — onEdit 트리거가 어떤 이유로든 놓친 변경을 되찾아오는 Safety Net이다.
 3. 좌측 메뉴 "트리거"(⏰ 아이콘)에서 두 트리거가 모두 등록됐는지 확인한다:
    - `handleEditTrigger` — 이벤트 소스: 스프레드시트에서, 이벤트 유형: 수정 시
    - `syncAll` — 시간 기반, 분 단위 타이머 (10분마다)
+
+### 평상시 정상 Trigger 상태
+
+| Handler | 평상시 개수 | 비고 |
+|---|---|---|
+| `handleEditTrigger` | 1개 | 지속 트리거 |
+| `syncAll` | 1개 | 지속 트리거(10분마다) |
+| `flushPendingSync` | **0개** | 1회성 — Sheet 수정 후 디바운스/재시도 대기 중인 짧은 순간에만 최대 1개 존재하는 것은 정상이다. 편집이 없는 평상시에 이 목록에 `flushPendingSync`가 보인다면(특히 "사용 중지됨" 상태로) `installOnEditTrigger`를 다시 실행해 정리한다. |
 
 즉시 수동 테스트하려면 드롭다운에서 `syncPermanentOnly` 또는 `syncEventOnly`를 선택해 실행한다
 (이 둘은 언제 실행해도 항상 Full Snapshot이다).
@@ -97,8 +111,31 @@ Sync 때 서버가 값을 채번해서 이 스크립트가 자동으로 셀에 �
 ## 7. 실행 로그 확인
 
 Apps Script 편집기 좌측 "실행" 메뉴에서 각 실행의 `Logger.log()` 출력을 확인할 수 있다.
-신규/수정/비활성/실패 건수와 오류 목록이 여기 남는다. (Admin 화면에서의 Sync 상태 조회는
-Phase 12에서 구현 — 지금은 `sync_logs` 테이블과 이 실행 로그로 확인한다.)
+매 Sync 시도마다 한 줄로 source sheet / `mode`(partial·full_snapshot) / `rows`(전송 Row 수) /
+`attempt`(현재 시도/최대 시도) / `status`(HTTP 상태 또는 연결실패) / 성공·실패가 함께 찍힌다
+(2026-09-15 재시도 로직 도입 시 추가). 예:
+
+```
+[상시 프로모션] Sync attempt=1/4 mode=partial rows=3 status=200 → 성공 — 신규 0, 수정 2, 비활성 0, 실패 0
+[상시 프로모션] Sync attempt=1/4 mode=partial rows=3 status=연결실패 → 실패(network) — ...
+15초 후 Sync 재시도(2/4) 예정.
+```
+
+(Admin 화면에서의 Sync 상태 조회는 Phase 12에서 구현 — 지금은 `sync_logs` 테이블(`sync_mode`/
+`received_row_count` 컬럼 포함)과 이 실행 로그로 확인한다.)
+
+## 8. Partial Sync 실패/재시도 동작 (2026-09-15 도입)
+
+DEV localhost가 잠깐 죽어있는 동안 실 편집이 유실됐던 사고 이후 도입했다 — pending Row는
+API 요청이 **실제로 성공(HTTP 2xx)했을 때만** 지워진다.
+
+- **연결 실패/timeout/5xx/429**: 15초 → 30초 → 60초 백오프로 최대 3회(총 4회 시도)까지
+  자동 재시도한다. 한도를 넘기면 pending은 유지한 채 재시도만 멈추고 로그를 남긴다 —
+  이후 같은 Row를 다시 편집하거나 10분 Full Snapshot Safety Net이 돌면 그때 반영된다.
+- **401/403(인증 오류), 409(대량 비활성화 안전장치 차단), 400 등 잘못된 요청**: 재시도하지
+  않고 즉시 로그만 남긴다 — 다시 시도해도 똑같이 실패하거나(인증/요청 오류), destructive한
+  상황을 자동으로 반복 시도하면 안 되기 때문이다(409). 이 경우도 pending은 지우지
+  않으므로 다음 편집이나 Full Snapshot이 결국 반영한다.
 
 ## 9. 자동 Sync + 행사 노출 E2E 검증 체크리스트
 
@@ -128,3 +165,6 @@ Phase 12에서 구현 — 지금은 `sync_logs` 테이블과 이 실행 로그�
 - **행사 캠페인이 생성 안 됨**: `행사명` 컬럼이 비어있지 않은지 확인 — 비어있으면 그 상품은 어떤 캠페인에도 연결되지 않는다(promotions 행 자체는 정상 생성됨)
 - **409 응답 / "대량 비활성화 안전장치 발동" 로그**: `syncAll`/`syncPermanentOnly`/`syncEventOnly`(Full Snapshot 경로)에서만 발생할 수 있다. Sheet에서 실수로 대량의 Row를 지웠거나 필터/숨김으로 `getDataRange()`가 일부만 읽은 것이 아닌지 확인한다 — 정상적인 소규모 단종 처리라면 임계치(기본 누락 비율 50%/절대값 50건)를 조정할 수 있다(`SYNC_DEACTIVATION_MAX_RATIO`/`SYNC_DEACTIVATION_MAX_ABSOLUTE` 서버 환경변수).
 - **onEdit 트리거가 반응하지 않음**: 좌측 "트리거" 메뉴에서 `handleEditTrigger`가 실제로 등록돼 있는지, 이벤트 유형이 "수정 시"인지 확인. 등록돼 있는데도 반응이 없다면 `installOnEditTrigger`를 다시 실행(기존 트리거를 지우고 재생성).
+- **편집했는데 한참 반영이 안 됨(dev server가 잠깐 죽어있었던 경우 등)**: 실행 로그에서 `status=연결실패` 또는 5xx/429로 실패한 뒤 "N초 후 Sync 재시도" 로그가 있는지 확인한다 — 최대 3회(총 4회 시도, 약 15+30+60=105초) 자동 재시도한다. 그래도 실패했다면(`재시도 한도 초과` 로그) 서버/터널이 다시 살아난 뒤 **그 Row를 아무 값이나 다시 한번 저장**하면 새 재시도 사이클이 시작된다. 그것도 번거로우면 최대 10분 뒤 Full Snapshot Safety Net이 자동으로 따라잡는다.
+- **401/403/409 실패 로그가 계속 남아있음**: 이 세 경우는 **자동 재시도하지 않는다**(재시도해도 똑같이 실패하거나, 409는 destructive 상황을 자동 반복하면 안 되므로). 401/403이면 Script Properties의 `SYNC_API_SECRET`을 확인하고, 409면 위 항목("409 응답 / 대량 비활성화 안전장치 발동")을 참고해 원인을 해결한 뒤 해당 Row를 다시 한번 편집해 새 시도를 유도한다.
+- **트리거 목록에 "사용 중지됨" 상태의 `flushPendingSync`가 여러 개 쌓여 있음**(재부팅 후 등): `installOnEditTrigger`를 다시 실행하면 이 stale 트리거들과 관련 상태(대기 중이던 Row 목록 포함)를 전부 정리하고 깨끗하게 재시작한다(2026-09-16부터 자동 정리 로직 포함) — 잊힌 편집이 있어도 10분 Full Snapshot Safety Net이 결국 다시 잡아오므로 안전하게 초기화할 수 있다. 평상시(편집 직후 짧은 순간이 아닐 때) `flushPendingSync`가 0개가 아니면 위 §4 "평상시 정상 Trigger 상태" 표를 참고해 같은 방법으로 정리한다.

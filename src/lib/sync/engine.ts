@@ -13,6 +13,7 @@ import {
   resolveCoreField,
 } from "./core-fields";
 import { DEFAULT_DEACTIVATION_SAFETY, evaluateDeactivationSafety } from "./safety";
+import { timestampsEqual } from "./timestamps";
 import type {
   DeactivationGuardReport,
   ProductIdAssignment,
@@ -73,6 +74,15 @@ function isEqual(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
+/**
+ * minor 변경은 절대 Push 대상이 될 수 없다 — DB에도 이 방향의 함의를 CHECK 제약으로
+ * 강제해뒀다(20260916010000_minor_change_logs_push_ineligible.sql). important/critical은
+ * 이 함수와 무관하게 상황에 따라 false일 수 있다(예: new_product + Initial Import).
+ */
+function pushEligibleFor(importance: "critical" | "important" | "minor"): boolean {
+  return importance !== "minor";
+}
+
 interface ChangedFieldEntry {
   fieldKey: string;
   before: Json;
@@ -87,6 +97,7 @@ export async function runPromotionSync(
 ): Promise<SyncResponseBody> {
   const db = createServiceRoleClient();
   const errors: SyncRowError[] = [];
+  const skipped: SyncRowError[] = [];
   const productIdAssignments: ProductIdAssignment[] = [];
   let insertedCount = 0;
   let updatedCount = 0;
@@ -186,7 +197,13 @@ export async function runPromotionSync(
 
         const brand = normalizeCellText(findCell(cells, "브랜드"));
         const productName = normalizeCellText(findCell(cells, "제품명"));
-        if (!brand && !productName) continue; // 빈 Row 무시 (§18)
+        if (!brand && !productName) {
+          // 빈 Row 무시 (§18) — 왜 스킵됐는지 관리자가 사후에 알 수 있도록 기록한다.
+          // 2026-09-16: received_row_count(Apps Script가 보낸 행 수)와 실제 처리 건수가
+          // 달랐을 때 원인을 추적할 방법이 없다는 게 드러나 도입했다.
+          skipped.push({ rowNumber: row.rowNumber, message: "빈 Row — 브랜드/제품명이 모두 비어있어 스킵" });
+          continue;
+        }
 
         // ---- Core field 파싱 --------------------------------------------------
         const corePatch: Record<string, unknown> = {};
@@ -426,6 +443,7 @@ export async function runPromotionSync(
                 change_type: c.changeType,
                 importance: c.importance,
                 source_sheet: sheet,
+                push_eligible: pushEligibleFor(c.importance),
               })),
             );
           }
@@ -461,8 +479,16 @@ export async function runPromotionSync(
               }
             } else {
               campaignId = prior.id;
+              // is_visible은 boolean 그대로 비교하고, start_at/end_at은 문자열이 아니라
+              // 실제 시각(epoch)으로 비교한다 — DB(PostgREST)가 돌려주는 "+00:00" 표현과
+              // 매번 새로 계산하는 new Date().toISOString()의 ".000Z" 표현이 같은 시각인데도
+              // 문자열로는 달라, 예전엔 이게 매 Sync마다 "변경됨"으로 오판되는 버그였다
+              // (2026-09-16 실 DEV 검증 중 발견 — 142건의 불필요한 change_log/
+              // last_important_change_at 갱신이 쌓여있었다).
               const campaignChanged =
-                prior.is_visible !== isVisible || prior.start_at !== startAt || prior.end_at !== endAt;
+                prior.is_visible !== isVisible ||
+                !timestampsEqual(prior.start_at, startAt) ||
+                !timestampsEqual(prior.end_at, endAt);
               if (campaignChanged) {
                 await db
                   .from("event_campaigns")
@@ -479,6 +505,7 @@ export async function runPromotionSync(
                   change_type: "event_period",
                   importance: "important",
                   source_sheet: sheet,
+                  push_eligible: pushEligibleFor("important"),
                 });
                 await db
                   .from("promotions")
@@ -544,6 +571,7 @@ export async function runPromotionSync(
             change_type: "minor_edit",
             importance: "minor",
             source_sheet: sheet,
+            push_eligible: pushEligibleFor("minor"),
           });
         }
       }
@@ -567,6 +595,8 @@ export async function runPromotionSync(
         deactivated_count: deactivatedCount,
         failed_count: errors.length,
         error_detail: errors.length > 0 ? (errors as unknown as Json) : null,
+        skipped_count: skipped.length,
+        skipped_detail: skipped.length > 0 ? (skipped as unknown as Json) : null,
       })
       .eq("id", syncLogId);
 
@@ -586,6 +616,8 @@ export async function runPromotionSync(
       deactivatedCount,
       failedCount: errors.length,
       errors,
+      skippedCount: skipped.length,
+      skipped,
       productIdAssignments,
       deactivationGuard,
     };
@@ -601,6 +633,8 @@ export async function runPromotionSync(
         deactivated_count: deactivatedCount,
         failed_count: errors.length,
         error_detail: { fatal: message, rowErrors: errors } as unknown as Json,
+        skipped_count: skipped.length,
+        skipped_detail: skipped.length > 0 ? (skipped as unknown as Json) : null,
       })
       .eq("id", syncLogId);
 
@@ -613,6 +647,8 @@ export async function runPromotionSync(
       deactivatedCount,
       failedCount: errors.length,
       errors: [...errors, { rowNumber: 0, message: `Sync 실패: ${message}` }],
+      skippedCount: skipped.length,
+      skipped,
       productIdAssignments,
       deactivationGuard,
     };

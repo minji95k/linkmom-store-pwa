@@ -67,6 +67,14 @@ export interface SyncResponseBody {
   deactivatedCount: number;
   failedCount: number;
   errors: SyncRowError[];
+  /**
+   * 브랜드/제품명이 모두 비어있어 정상적으로 스킵된 Row 수 — 실패(errors)가 아니라
+   * 의도된 빈 Row 무시(§18)다. received_row_count(Apps Script가 보낸 행 수)와 실제
+   * insert/update 처리 건수가 어긋날 때 관리자가 원인을 바로 알 수 있도록 2026-09-16
+   * 도입했다(그 전에는 조용히 continue만 해서 사후 추적이 불가능했다).
+   */
+  skippedCount: number;
+  skipped: SyncRowError[];
   /** Apps Script가 이 목록을 받아 시트의 product_id 셀에 되써야 한다. */
   productIdAssignments: ProductIdAssignment[];
   deactivationGuard: DeactivationGuardReport;

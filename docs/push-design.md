@@ -32,6 +32,7 @@ NEW 판정과 **동일한** `promotion_field_definitions.change_importance` / `p
 - **`promotions.is_initial_import`** (boolean): 이 상품이 해당 `promotion_type`의 최초 Import Sync에서 생성됐는지. Sync 엔진이 매 실행 시작 시 `promotion_sync_state`를 조회해 자동 판정한다 — 운영자가 수동으로 체크하는 플래그가 아니다.
 - **`promotion_change_logs.push_eligible`** (boolean, 기본 `true`): Phase 11이 실제로 필터링할 단일 컬럼. `change_type='new_product'` 로그는 그 상품이 `is_initial_import=true`면 `push_eligible=false`로 기록된다. 그 외 모든 로그(운영 개시 이후 신규 상품, 기존 상품의 가격/사은품 등 일반 변경)는 기본값 `true`.
 - 실제 DEV Supabase에서 188건 Import로 검증 완료: 188개 상품 전부 `is_initial_import=true`, 그 `new_product` 로그 188건 전부 `push_eligible=false`(`initial_import_completed_at`은 실제 첫 라이브 Sync의 `sync_logs.finished_at`으로 정확히 백필). "최초 Import 이후 신규 추가" 및 "Hard Delete 후 재Sync" 두 시나리오 모두 `event` 타입 샌드박스에서 검증 후 테스트 데이터 정리.
+- ✅ 확정(2026-09-16): **`importance='minor'`인 로그는 항상 `push_eligible=false`다** — 반대 방향(important/critical이면서 push_eligible=false)은 여전히 가능하다(위 Initial Import 케이스). 이 방향만의 함의를 `promotion_change_logs_minor_not_push_eligible` CHECK 제약으로 DB 스키마에도 강제해뒀다(`20260916010000_minor_change_logs_push_ineligible.sql`) — "중요하지 않은 변경인데 Push 대상"이라는 의미상 모순 상태가 애초에 저장될 수 없다. §3.2의 이중 안전장치는 여전히 유효하며, 이건 그보다 한 단계 더 앞선 방어선이다.
 
 ### 3.2 Phase 11 구현 시 반드시 지킬 이중 안전장치
 

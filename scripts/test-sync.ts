@@ -384,6 +384,11 @@ async function runTests(createdProductIds: string[], setCampaignKey: (key: strin
     minorLogs.some((l) => l.changed_field === "remarks" && l.importance === "minor"),
   );
   record(
+    "5. importance=minor인 change_log는 항상 push_eligible=false(2026-09-16 확정 + DB CHECK 제약)",
+    minorLogs.filter((l) => l.importance === "minor").every((l) => l.push_eligible === false),
+    JSON.stringify(minorLogs.filter((l) => l.importance === "minor").map((l) => ({ f: l.changed_field, pe: l.push_eligible }))),
+  );
+  record(
     "5. last_important_change_at은 그대로(NEW 대상 아님) — minor 수정은 NEW/Push 제외(§41)",
     flickAfterMinor?.last_important_change_at === flickBeforeMinor?.last_important_change_at,
   );
@@ -627,6 +632,43 @@ async function runTests(createdProductIds: string[], setCampaignKey: (key: strin
   record(
     "13. 행사기간을 다시 연장하면 자동으로 노출 재개",
     r13.status === 200 && (visibleAfterExtend ?? []).some((c) => c.id === campaign!.id),
+  );
+
+  // 14) 무변경 재Sync — campaign_visibility 오탐 회귀 테스트 (2026-09-16 버그 수정 검증) --
+  // 13번과 완전히 동일한 값(ON, yesterday, nextWeek)으로 다시 보낸다. DB에는 이미
+  // ISO 문자열로 저장돼 있고(예: "+00:00"), 이번에 새로 계산한 값은 항상 ".000Z" 포맷이라
+  // 텍스트로는 다르지만 실제로는 같은 시각이다 — timestampsEqual로 고치기 전에는 이 경우도
+  // "변경됨"으로 오판해 매번 campaign_visibility 로그와 last_important_change_at 갱신이
+  // 발생했다(실 DEV에서 142건 누적된 원인과 동일한 패턴).
+  const campaignVisibilityLogsBefore14 = (await getChangeLogs(mimaId)).filter(
+    (l) => l.changed_field === "campaign_visibility",
+  ).length;
+  const mimaBefore14 = await getPromotion(mimaId);
+  const campaignBefore14 = await db.from("event_campaigns").select("updated_at").eq("id", campaign!.id).single();
+
+  const r14 = await callSync("event", EVENT_HEADERS, [
+    { rowNumber: 2, values: mimaJarimax(mimaId, "ON", yesterday, nextWeek) },
+  ]);
+  const campaignVisibilityLogsAfter14 = (await getChangeLogs(mimaId)).filter(
+    (l) => l.changed_field === "campaign_visibility",
+  ).length;
+  const mimaAfter14 = await getPromotion(mimaId);
+  const campaignAfter14 = await db.from("event_campaigns").select("updated_at").eq("id", campaign!.id).single();
+
+  record(
+    "14. 동일 값으로 재Sync — campaign_visibility 로그가 새로 생기지 않음(오탐 수정 확인)",
+    r14.status === 200 && campaignVisibilityLogsAfter14 === campaignVisibilityLogsBefore14,
+    `before=${campaignVisibilityLogsBefore14}, after=${campaignVisibilityLogsAfter14}`,
+  );
+  record(
+    "14. last_important_change_at이 불필요하게 갱신되지 않음",
+    mimaAfter14?.last_important_change_at === mimaBefore14?.last_important_change_at,
+    `before=${mimaBefore14?.last_important_change_at}, after=${mimaAfter14?.last_important_change_at}`,
+  );
+  record(
+    "14. event_campaigns.updated_at도 불필요하게 갱신되지 않음(UPDATE 문 자체가 안 나감)",
+    campaignAfter14.data?.updated_at === campaignBefore14.data?.updated_at,
+    `before=${campaignBefore14.data?.updated_at}, after=${campaignAfter14.data?.updated_at}`,
   );
 }
 

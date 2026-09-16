@@ -406,6 +406,9 @@ export interface Database {
           // 2026-09-15 이전 Row는 당시 기록되지 않아 NULL이다(추측으로 채우지 않음).
           sync_mode: "full_snapshot" | "partial" | null;
           received_row_count: number | null;
+          // 2026-09-16 이전 Row는 당시 기록되지 않아 NULL이다(추측으로 채우지 않음).
+          skipped_count: number | null;
+          skipped_detail: Json | null;
           created_at: string;
         };
         Insert: {
@@ -421,6 +424,8 @@ export interface Database {
           error_detail?: Json | null;
           sync_mode?: "full_snapshot" | "partial" | null;
           received_row_count?: number | null;
+          skipped_count?: number | null;
+          skipped_detail?: Json | null;
         };
         Update: {
           finished_at?: string | null;
@@ -432,6 +437,8 @@ export interface Database {
           error_detail?: Json | null;
           sync_mode?: "full_snapshot" | "partial" | null;
           received_row_count?: number | null;
+          skipped_count?: number | null;
+          skipped_detail?: Json | null;
         };
         Relationships: [];
       };

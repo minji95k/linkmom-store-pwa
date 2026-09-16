@@ -101,7 +101,7 @@ Core Field(브랜드/가격 등)도 이 테이블에 행을 미리 시드해 두
 | change_type | text (`new_product`\|`price`\|`promotion`\|`benefit`\|`gift`\|`event_period`\|`store_operation`\|`configuration`\|`minor_edit`) | |
 | importance | text (`critical`\|`important`\|`minor`) | |
 | source_sheet | text | |
-| push_eligible | boolean default true | ✅ 확정(2026-09-10): Phase 11 Push 발송 필터의 기준 컬럼. `is_initial_import=true`인 상품의 `new_product` 로그는 `false`(기록은 남기되 발송 안 함). `importance`와 별개 축 — push-design.md §3.1 |
+| push_eligible | boolean default true | ✅ 확정(2026-09-10): Phase 11 Push 발송 필터의 기준 컬럼. `is_initial_import=true`인 상품의 `new_product` 로그는 `false`(기록은 남기되 발송 안 함). `importance`와 별개 축 — push-design.md §3.1. **CHECK 제약** `promotion_change_logs_minor_not_push_eligible`(2026-09-16): `importance='minor'`이면 `push_eligible`이 반드시 `false` — 반대(important/critical인데 false)는 여전히 허용. |
 | changed_at | timestamptz default now() | |
 
 인덱스: `(promotion_id, changed_at desc)`, `(importance, changed_at desc)`, `(push_eligible, importance, changed_at desc)`.
@@ -180,7 +180,7 @@ user_id FK (PK), push_enabled boolean, categories jsonb (카테고리별 on/off,
 ## 6. Sync / Audit
 
 ### `sync_logs`
-id, source_sheet(`permanent`\|`event`), started_at, finished_at, success boolean, inserted_count, updated_count, deactivated_count, failed_count, error_detail jsonb nullable, **`sync_mode`**(`full_snapshot`\|`partial`, nullable) **`received_row_count`**(integer, nullable) — 이 실행이 어떤 모드로 몇 개 Row를 받았는지, 사후에 DB만으로 확인할 수 있게 2026-09-15 추가(`20260915090000_sync_logs_mode_and_row_count.sql`). 요청을 받는 즉시(성공/실패와 무관하게) 기록되므로 source_sheet 불일치 등으로 즉시 실패한 경우에도 감사 목적으로 남는다. 2026-09-15 이전 Row는 당시 기록되지 않아 두 컬럼 모두 NULL(추측으로 채우지 않음).
+id, source_sheet(`permanent`\|`event`), started_at, finished_at, success boolean, inserted_count, updated_count, deactivated_count, failed_count, error_detail jsonb nullable, **`sync_mode`**(`full_snapshot`\|`partial`, nullable) **`received_row_count`**(integer, nullable) — 이 실행이 어떤 모드로 몇 개 Row를 받았는지, 사후에 DB만으로 확인할 수 있게 2026-09-15 추가(`20260915090000_sync_logs_mode_and_row_count.sql`). 요청을 받는 즉시(성공/실패와 무관하게) 기록되므로 source_sheet 불일치 등으로 즉시 실패한 경우에도 감사 목적으로 남는다. 2026-09-15 이전 Row는 당시 기록되지 않아 두 컬럼 모두 NULL(추측으로 채우지 않음). **`skipped_count`**(integer, nullable) **`skipped_detail`**(jsonb, nullable) — 브랜드/제품명이 모두 비어있어 정상 스킵된 Row 수/목록(`{rowNumber, message}[]`, 실패와 다른 축). `received_row_count`와 실제 처리 건수가 어긋날 때 원인을 바로 알 수 있도록 2026-09-16 추가(`20260916020000_sync_logs_skipped_rows.sql`). 2026-09-16 이전 Row는 NULL.
 
 ### `promotion_sync_state` ✅ 확정(2026-09-11, 실제 Hard Delete 재현 테스트로 검증)
 promotion_type(PK), initial_import_completed_at timestamptz nullable. Sheet 타입별 "최초 Import가 끝났는지"를 나타내는 영구 상태 — `promotions` Row 개수가 아니라 이 테이블로 판정해야 하는 이유는 `is_initial_import` 판정 로직이 단순 "Row 0건 여부"면 Hard Delete 후 재Sync 시 오판정될 수 있기 때문(push-design.md §3.1). `mark_initial_import_completed(promotion_type)` 함수가 COALESCE로 최초 1회만 값을 채우고 이후 절대 덮어쓰지 않는다.
