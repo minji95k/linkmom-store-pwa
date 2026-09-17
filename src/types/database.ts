@@ -221,6 +221,12 @@ export interface Database {
           is_initial_import: boolean;
           last_important_change_at: string | null;
           source_row_updated_at: string | null;
+          /**
+           * `color`를 공백으로 join한 값 — trigger(`promotions_set_color_text`)가
+           * 자동 계산한다(20260916100000 migration). 통합검색에서 컬러 부분일치(ilike)
+           * 검색용으로만 쓰고, Insert/Update로 직접 쓸 수 없다(Sync 엔진도 모르는 컬럼).
+           */
+          color_text: string | null;
           created_at: string;
           updated_at: string;
         };
