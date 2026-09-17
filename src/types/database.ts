@@ -122,10 +122,14 @@ export interface Database {
           body: string;
           notice_type: NoticeType;
           author_id: string | null;
+          /** 작성 시점 이름 스냅샷(20260917100200) — STAFF는 profiles RLS상 작성자 프로필을 직접 못 읽는다. */
+          author_name: string | null;
           is_pinned: boolean;
           requires_confirmation: boolean;
           published_at: string;
           expires_at: string | null;
+          /** Phase 8에서 추가(20260917100000) — 품절 재입고 안내 폼 등 외부 링크. */
+          external_link: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -135,10 +139,12 @@ export interface Database {
           body: string;
           notice_type?: NoticeType;
           author_id?: string | null;
+          author_name?: string | null;
           is_pinned?: boolean;
           requires_confirmation?: boolean;
           published_at?: string;
           expires_at?: string | null;
+          external_link?: string | null;
         };
         Update: {
           title?: string;
@@ -148,6 +154,7 @@ export interface Database {
           requires_confirmation?: boolean;
           published_at?: string;
           expires_at?: string | null;
+          external_link?: string | null;
         };
         Relationships: [];
       };
@@ -193,6 +200,29 @@ export interface Database {
         Update: {
           confirmed_at?: string | null;
         };
+        Relationships: [];
+      };
+      attachments: {
+        Row: {
+          id: string;
+          owner_type: "notice" | "training" | "profile";
+          owner_id: string;
+          storage_path: string;
+          mime_type: string | null;
+          size_bytes: number | null;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_type: "notice" | "training" | "profile";
+          owner_id: string;
+          storage_path: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          uploaded_by?: string | null;
+        };
+        Update: Record<string, never>;
         Relationships: [];
       };
       promotions: {

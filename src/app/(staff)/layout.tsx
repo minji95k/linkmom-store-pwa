@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 
 import { BottomNav } from "@/components/bottom-nav";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
+import { getUnreadNoticeCount } from "@/lib/notices/queries";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * 직원(Mobile First) 화면 전체를 감싸는 Route Group Layout.
@@ -16,10 +18,13 @@ export default async function StaffLayout({ children }: { children: React.ReactN
     redirect("/login");
   }
 
+  const supabase = await createClient();
+  const unreadNoticeCount = await getUnreadNoticeCount(supabase, currentUser.id);
+
   return (
     <div className="min-h-dvh pb-20">
       {children}
-      <BottomNav />
+      <BottomNav unreadNoticeCount={unreadNoticeCount} />
     </div>
   );
 }

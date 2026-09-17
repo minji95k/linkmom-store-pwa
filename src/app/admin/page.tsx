@@ -40,6 +40,13 @@ export default async function AdminPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Link
+        href="/admin/notices"
+        className="rounded-xl border border-border bg-card p-4 text-center text-sm font-bold text-text hover:bg-bg"
+      >
+        공지 관리(Phase 8) →
+      </Link>
     </main>
   );
 }

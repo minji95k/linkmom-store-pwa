@@ -19,7 +19,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function BottomNav() {
+export function BottomNav({ unreadNoticeCount = 0 }: { unreadNoticeCount?: number }) {
   const pathname = usePathname();
 
   return (
@@ -36,11 +36,18 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold",
+                "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold",
                 active ? "text-purple" : "text-text-3",
               )}
             >
-              <Icon className="h-5 w-5" active={active} />
+              <span className="relative">
+                <Icon className="h-5 w-5" active={active} />
+                {item.href === "/notices" && unreadNoticeCount > 0 && (
+                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
+                    {unreadNoticeCount > 99 ? "99+" : unreadNoticeCount}
+                  </span>
+                )}
+              </span>
               {item.label}
             </Link>
           );

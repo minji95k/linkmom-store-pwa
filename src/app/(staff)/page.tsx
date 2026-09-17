@@ -3,6 +3,7 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EventCampaignBanner } from "@/components/promotions/event-campaign-banner";
+import { HomeNoticeSummary } from "@/components/notices/home-notice-summary";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -10,6 +11,7 @@ import {
   getNewPromotions,
   getVisibleEventCampaigns,
 } from "@/lib/promotions/queries";
+import { getNoticesForStaff, selectHomeNoticeHighlights } from "@/lib/notices/queries";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -19,10 +21,12 @@ export default async function HomePage() {
   const currentUser = (await getCurrentUser())!;
   const supabase = await createClient();
 
-  const [campaigns, newResult] = await Promise.all([
+  const [campaigns, newResult, notices] = await Promise.all([
     getVisibleEventCampaigns(supabase),
     getNewPromotions(supabase, { page: 1 }),
+    getNoticesForStaff(supabase, currentUser.id),
   ]);
+  const noticeHighlights = selectHomeNoticeHighlights(notices);
 
   const campaignsWithCount = await Promise.all(
     campaigns.map(async (c) => ({ campaign: c, count: await getCampaignProductCount(supabase, c.id) })),
@@ -37,6 +41,10 @@ export default async function HomePage() {
         </div>
         <span className="text-xs text-text-3">{currentUser.profile.name}님</span>
       </div>
+
+      {/* 우선순위(§10, product-requirements.md §4.1): 긴급/필독 미확인/중요/일반 신규 공지가
+          행사 배너·NEW 요약보다 먼저 온다. */}
+      <HomeNoticeSummary notices={noticeHighlights} />
 
       {campaignsWithCount.map(({ campaign, count }) => (
         <EventCampaignBanner key={campaign.id} campaign={campaign} productCount={count} />
