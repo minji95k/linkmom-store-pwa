@@ -25,7 +25,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-dvh pb-20">
       {children}
-      <BottomNav unreadNoticeCount={unreadNoticeCount} />
+      <BottomNav initialUnreadNoticeCount={unreadNoticeCount} />
     </div>
   );
 }

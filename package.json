@@ -16,6 +16,8 @@
     "test:rls": "node --env-file=.env.local --import tsx scripts/test-rls.ts",
     "test:notice-rls": "node --env-file=.env.local --import tsx scripts/test-notice-rls.ts",
     "test:realtime-rls": "node --env-file=.env.local --import tsx scripts/test-realtime-rls.ts",
+    "test:realtime-lifecycle": "node --import tsx scripts/test-realtime-subscription-lifecycle.ts",
+    "test:realtime-debounce": "node --import tsx scripts/test-realtime-debounce.ts",
     "test:sync": "node --env-file=.env.local --import tsx scripts/test-sync.ts",
     "test:sync:safety": "node --import tsx scripts/test-sync-safety.ts",
     "test:apps-script:retry": "node --import tsx scripts/test-apps-script-retry.ts",

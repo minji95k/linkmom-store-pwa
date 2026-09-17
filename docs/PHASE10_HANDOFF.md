@@ -1,5 +1,7 @@
 # Phase 10 개발 인수인계 문서 (Realtime)
 
+> ✅ **Phase 10 완료 (2026-09-17)**: 이 문서가 §13.3/§18에서 미완료로 남겨뒀던 4가지 항목(Bottom Nav 뱃지 실시간화, debounce/coalesce, 구독 생명주기 자동 테스트, 실 Google Sheet E2E)이 전부 완료·검증되었다. 최종 구현 내용은 [architecture.md §5.5](./architecture.md#55-realtime-아키텍처-phase-10-2026-09-17-완료--실-google-sheet-e2e까지-검증됨), 사고/교훈은 [CLAUDE.md "Phase 10 완료" 절](../CLAUDE.md)을 참조할 것 — 이 문서(PHASE10_HANDOFF.md)는 착수 시점 스냅샷으로 그대로 보존하고 갱신하지 않는다(작업 경위 기록으로서의 가치를 위해).
+
 > **이 문서의 목적**: 현재 대화의 컨텍스트 윈도우가 가득 차서, 새로운 Claude Code 채팅에서 Phase 10(Realtime)을 이어서 진행한다. 이 문서 하나만 읽으면 Phase 0~9의 설계 결정과 Phase 10의 실제 구현 상태(전부 미커밋)를 잃지 않고 정확히 이어서 작업할 수 있도록 작성했다.
 >
 > **작성 방식**: 이전 대화의 기억을 요약한 것이 아니다. 아래 "1. 재조사 소스"에 나열한 실제 코드/문서/migration/git 이력/테스트 스위트/DEV Supabase(읽기 전용)를 **2026-09-17에 직접 다시 읽고 재실행**해 검증한 결과다. **이 문서를 작성하는 동안 Production/DEV의 Promotion·Notice·Sync 데이터는 단 하나도 수정하지 않았다** — 실행한 것은 `git status`/`git log`/`Read`/`typecheck`/`lint`, DEV Supabase에 대한 SELECT 전용 조회, 그리고 이미 안전성이 검증되어 있고 종료 시 스스로 원상복구하는 기존 RLS 테스트 스크립트(`npm run test:*-rls`)뿐이다. 새 Phase 10 코드는 이 문서 작성 과정에서 한 줄도 추가/수정하지 않았다.
