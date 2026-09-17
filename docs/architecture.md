@@ -117,6 +117,27 @@ importance = max(changed_fields의 importance)  // critical > important > minor
 
 동일한 `promotion_field_definitions.change_importance` / `push_enabled`를 NEW 판정과 Push 판정이 **함께 참조**하여 §47 요구사항(다른 로직 금지)을 코드 레벨에서 보장한다.
 
+## 5.5 Realtime 아키텍처 (Phase 10, 2026-09-17 구현)
+
+`supabase_realtime` Publication에 **3개 테이블만** 추가한다(무분별한 전체 구독 금지, §10) — `promotions`/`event_campaigns`/`notices`. `notice_reads`/`promotion_change_logs` 등은 구독하지 않는다.
+
+```
+Supabase 테이블 UPDATE/INSERT (Sync API 또는 Admin 화면)
+        │
+        ▼
+Supabase Realtime (postgres_changes, RLS 그대로 적용됨 — 실측 확인, 아래 참조)
+        │
+        ▼
+직원 PWA의 RealtimeUpdateBanner(Client Component)
+        │  "새로운 정보가 업데이트되었습니다" 배너만 띄움(자동 리렌더/스크롤 리셋 없음)
+        ▼
+사용자가 [새로고침] 클릭 → router.refresh() → 서버가 RLS 그대로 재조회
+```
+
+- **RLS 적용 여부는 추측하지 않고 실측했다**(`scripts/test-realtime-rls.ts`): STAFF 세션으로 비활성 상품/다른 매장 공지 UPDATE를 구독하면 이벤트가 안 오고, 자신이 볼 수 있는 행의 UPDATE는 정상 수신됨을 직접 확인했다.
+- **함정(실측)**: 브라우저 클라이언트(`createBrowserClient`)는 쿠키에서 세션을 비동기로 읽는다. `channel.subscribe()`를 세션 로드 전에 호출하면 Realtime 소켓이 anon 권한으로 붙어버려(구독 자체는 "SUBSCRIBED"로 성공한 것처럼 보이지만) RLS가 전부 막아 이벤트가 하나도 안 오는, 겉보기엔 정상인데 실제로는 조용히 죽어있는 상태가 된다. `supabase.auth.getSession()`으로 세션을 먼저 확보하고 `supabase.realtime.setAuth(token)`을 명시적으로 호출한 뒤에만 구독해야 한다(`src/components/realtime/realtime-update-banner.tsx`).
+- Realtime payload 자체는 신뢰하지 않는다 — 검색/필터/페이지네이션이 서버 쿼리 기준이라, "새 데이터가 있다"는 신호로만 쓰고 실제 데이터는 항상 RLS가 적용된 서버 재조회(`router.refresh()`)로 가져온다.
+
 ## 6. Push 아키텍처 개요
 
 상세는 [push-design.md](./push-design.md). 핵심: Change 감지 → Push 대상 큐 적재 → Batching Window(예: 2~5분) 내 다건 발생 시 Summary 1건으로 통합 → 대상자(Store/Role 기준) 필터링 → Delivery.

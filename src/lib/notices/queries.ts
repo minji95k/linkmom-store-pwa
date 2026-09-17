@@ -27,6 +27,7 @@ const IMPORTANCE_BY_TYPE: Record<NoticeType, NoticeImportance> = {
   발주: "normal",
   운영: "normal",
   시스템: "normal",
+  교육: "normal", // Phase 9 SKIP(2026-09-17) — 교육 목적 공지, 정보성 유형과 동일 취급
 };
 
 export function noticeImportance(type: NoticeType): NoticeImportance {

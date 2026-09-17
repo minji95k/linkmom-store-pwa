@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "링크맘 매장 운영",
     short_name: "링크맘",
-    description: "링크맘 매장 직원용 프로모션·공지·교육자료 운영 포털",
+    description: "링크맘 매장 직원용 프로모션·공지 운영 포털",
     start_url: "/",
     display: "standalone",
     background_color: "#faf8fc",

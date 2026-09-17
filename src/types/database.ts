@@ -30,7 +30,8 @@ export type NoticeType =
   | "판매가변경"
   | "공급가변경"
   | "운영"
-  | "시스템";
+  | "시스템"
+  | "교육"; // Phase 9 SKIP(2026-09-17) — 교육자료를 Notice로 흡수하며 추가(20260917200000)
 
 export type NoticeTargetType = "all" | "store" | "role" | "user";
 

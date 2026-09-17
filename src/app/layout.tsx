@@ -14,7 +14,7 @@ const notoSansKr = Noto_Sans_KR({
 
 export const metadata: Metadata = {
   title: "링크맘 매장 운영",
-  description: "링크맘 매장 직원용 프로모션·공지·교육자료 운영 포털",
+  description: "링크맘 매장 직원용 프로모션·공지 운영 포털",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

@@ -138,6 +138,8 @@ where is_visible = true
 
 ## 4. 공지 / 교육자료
 
+> ⚠️ **Phase 9 SKIP 결정(2026-09-17)**: 아래 `training_materials` 계열 4개 테이블은 **구현하지 않는다**. 교육자료 요구사항은 전부 `notices`/`notice_targets`/`notice_reads` + `attachments`로 대체됐다(product-requirements.md §4.6). 이 절의 `training_materials` 이하 4개 항목은 Phase 1~2 설계 당시의 계획 기록으로만 남겨둔다 — 실제 스키마에 없다.
+
 ### `notices`
 id, title, body, notice_type(`일반`\|`중요`\|`긴급`\|`필독`\|`행사`\|`발주`\|`판매가변경`\|`공급가변경`\|`운영`\|`시스템`), author_id FK→profiles, published_at, expires_at, is_pinned boolean, requires_confirmation boolean, created_at/updated_at.
 
@@ -198,9 +200,8 @@ profiles ─┬─< user_store_access >─┬─ stores
           │                        │
           │                        └─< promotions.store_operation_note (텍스트, 관계아님 — 향후 구조화 검토)
           │
-          ├─< notice_reads >── notices ─< notice_targets
-          ├─< training_material_reads >── training_materials ─< training_material_files
-          │                                        └─< training_material_targets
+          ├─< notice_reads >── notices ─< notice_targets ── attachments(owner_type='notice')
+          │   (training_material_* 4종은 Phase 9 SKIP — notices가 대체)
           ├─< push_subscriptions >─< notification_deliveries >── notifications ─< notification_targets
           └─< audit_logs
 

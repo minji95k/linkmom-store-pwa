@@ -7,6 +7,7 @@ import { ChangeBadges } from "@/components/promotions/change-badges";
 import { ChangeHistoryList } from "@/components/promotions/change-history-list";
 import { DynamicFieldsList } from "@/components/promotions/dynamic-fields-list";
 import { PriceLines } from "@/components/promotions/price-block";
+import { RealtimeUpdateBanner } from "@/components/realtime/realtime-update-banner";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCoreFieldDisplayLabels,
@@ -58,6 +59,12 @@ export default async function PromotionDetailPage({
       <Link href="/promotions" className="text-xs font-bold text-text-3">
         ← 프로모션 목록
       </Link>
+
+      <RealtimeUpdateBanner
+        channelName={`promotion-detail-${promotion.id}`}
+        watches={[{ table: "promotions", event: "UPDATE", filter: `id=eq.${promotion.id}` }]}
+        label="이 상품 정보가 변경되었습니다."
+      />
 
       {campaign && (
         <Link href={`/promotions/events/${campaign.id}`}>

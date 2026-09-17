@@ -50,7 +50,7 @@ NEW 판정과 **동일한** `promotion_field_definitions.change_importance` / `p
 
 ## 4. Push 대상 이벤트
 
-긴급/중요/필독공지, 행사공지, 신규/필수 교육자료, 신규 프로모션, 위 표의 important/critical 변경. minor 변경은 절대 발송하지 않는다.
+긴급/중요/필독공지(신상품 교육 공지 포함 — Phase 9 SKIP, product-requirements.md §4.6), 행사공지, 신규 프로모션, 위 표의 important/critical 변경. minor 변경은 절대 발송하지 않는다.
 
 ## 5. Batching (다건 변경 통합)
 
@@ -77,8 +77,7 @@ Window 종료 시:
 | 유형 | 경로 |
 |---|---|
 | 프로모션 상세 | `/promotions/{product_id}` |
-| 공지 | `/notices/{notice_id}` |
-| 교육자료 | `/training/{material_id}` |
+| 공지(교육 공지 포함) | `/notices/{notice_id}` |
 | 최근 변경 요약 | `/promotions/updates` |
 | 행사 | `/events/{campaign_id}` |
 
@@ -100,7 +99,7 @@ Push를 놓쳤거나 OS 알림을 차단한 경우를 대비해 `notifications` 
 
 ## 11. Badge
 
-지원 환경에서 PWA App Badge(`navigator.setAppBadge`) 적용 + Bottom Navigation 내 공지/교육자료 미확인 Count Badge.
+지원 환경에서 PWA App Badge(`navigator.setAppBadge`) 적용 + Bottom Navigation 공지 탭 미확인 Count Badge(Phase 8에서 구현 완료 — 교육 공지도 포함).
 
 ## 12. Push 보안 (permissions.md 참조)
 

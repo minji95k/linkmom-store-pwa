@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EventCampaignBanner } from "@/components/promotions/event-campaign-banner";
 import { HomeNoticeSummary } from "@/components/notices/home-notice-summary";
+import { RealtimeUpdateBanner } from "@/components/realtime/realtime-update-banner";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -41,6 +42,16 @@ export default async function HomePage() {
         </div>
         <span className="text-xs text-text-3">{currentUser.profile.name}님</span>
       </div>
+
+      <RealtimeUpdateBanner
+        channelName="home"
+        watches={[
+          { table: "notices", event: "*" },
+          { table: "promotions", event: "*" },
+          { table: "event_campaigns", event: "*" },
+        ]}
+        label="새로운 정보가 있습니다."
+      />
 
       {/* 우선순위(§10, product-requirements.md §4.1): 긴급/필독 미확인/중요/일반 신규 공지가
           행사 배너·NEW 요약보다 먼저 온다. */}

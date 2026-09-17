@@ -21,7 +21,7 @@
 6. NEW는 "최근 7일 내 수정된 모든 상품"이 아니다. **최근 72시간(Rolling)** 내 신규 상품 또는 가격/프로모션/혜택/사은품/행사기간/판매조건 등 **중요 변경**만 NEW로 취급한다. 공백/오타/표기정리/내부관리 필드/타임스탬프만 바뀐 것은 제외한다.
 7. **NEW 판정과 Push 판정은 동일한 Change Classification(`promotion_field_definitions.change_importance`/`push_enabled`)을 공유**한다. 서로 다른 중요도 로직을 만들지 않는다.
 8. 다수 상품이 짧은 시간에 함께 수정되면 Push를 건수만큼 보내지 않는다 — Summary Notification으로 통합한다(critical/필독/즉시발송 지정 건은 예외).
-9. 공지/교육자료는 대상 매장·Role을 지정할 수 있어야 한다.
+9. 공지(신상품 교육 등 교육 목적 공지 포함 — Phase 9 SKIP, 아래 참조)는 대상 매장·Role을 지정할 수 있어야 한다.
 10. 사용자·매장 권한은 UI가 아니라 **Database RLS + Server-side Authorization**으로 보호한다. URL 변경, API 직접 호출, Client Role 조작으로 우회되면 안 된다.
 11. 가격/프로모션 정보에 오래된 Cache가 노출되면 안 된다(PWA Service Worker는 앱 셸만 캐시, 데이터는 Network First).
 12. Supabase Service Role Key, VAPID Private Key는 클라이언트에 절대 노출하지 않는다. `.env*`는 커밋하지 않는다.
@@ -38,7 +38,7 @@
 ## 개발 원칙
 
 - Reference(`reference/softr`, `reference/spreadsheet`, `reference/brand`)를 확인하지 않은 내용을 추측해서 확정하지 않는다.
-- 전체 기능을 한 번에 구현하지 않는다. Phase 단위로 진행한다(마스터 프롬프트 §82 순서 기준: 분석 → 요구사항 → 아키텍처 → UI → Foundation → Auth → Promotion Migration → Promotion UI → Notice → Training → Realtime → Push → Admin → Security → QA → Deployment).
+- 전체 기능을 한 번에 구현하지 않는다. Phase 단위로 진행한다(마스터 프롬프트 §82 순서 기준: 분석 → 요구사항 → 아키텍처 → UI → Foundation → Auth → Promotion Migration → Promotion UI → Notice → ~~Training~~(2026-09-17 SKIP, Notice로 통합) → Realtime → Push → Admin → Security → QA → Deployment).
 - Database 변경은 Migration 파일로 관리한다. Production DB 수동 직접수정에 의존하지 않는다.
 - TypeScript `any` 사용 최소화. 중복 코드 최소화, 재사용 가능한 Component 사용.
 - Mock Data는 명확히 분리한다.
@@ -105,6 +105,20 @@
 - ⚠️ **`promotion_change_logs.push_eligible`이 `importance`와 별개 축이라는 설계(§3.1) 때문에, `importance='minor'`인 로그도 컬럼 기본값(`true`)을 그대로 물려받아 저장되고 있었다(2026-09-16, 실 A~E 테스트 검증 중 발견)** — "중요하지 않은 변경인데 Push 대상"이라는 의미상 모순. Phase 11의 이중 필터(`importance != 'minor' AND push_eligible = true`)가 실제 발송은 걸러주지만, **DB 자체가 애초에 일관된 의미를 갖도록** `importance <> 'minor' or push_eligible = false`라는 한쪽 방향 CHECK 제약을 추가했다(`20260916010000_minor_change_logs_push_ineligible.sql`, 기존 DEV 데이터 4건도 함께 백필 — `promotions` 테이블은 손대지 않고 `promotion_change_logs`만). 반대 방향(important인데 push_eligible=false, 예: Initial Import new_product)은 여전히 허용되므로 CHECK을 한쪽으로만 걸었다. **앞으로 "두 컬럼이 서로 다른 축이라 독립적"이라고 설계해도, 실제로는 한쪽 방향의 함의가 성립하는 조합이 있다면 그 함의를 CHECK 제약으로 스키마에 새겨둔다** — 애플리케이션 코드가 실수로 빼먹어도 DB가 막아준다.
 - ⚠️ **`event_campaigns` 변경 감지가 `start_at`/`end_at`을 문자열로 비교하고 있었다(2026-09-16 발견)** — Supabase가 돌려주는 `"+00:00"` 표현과 매번 새로 계산하는 `new Date().toISOString()`의 `".000Z"` 표현이 같은 시각인데도 문자열로는 달라, 캠페인이 있는 거의 모든 Sync(10분 Full Snapshot 포함)마다 "변경됨"으로 오판해 실 DEV DB에 불필요한 `campaign_visibility` 로그와 `last_important_change_at` 갱신이 4일간 143건 쌓였다. `timestampsEqual()`(epoch 비교) 순수 함수로 고치고(`src/lib/sync/timestamps.ts`), 기존 오염 로그는 `timestamptz` 캐스팅 비교(애플리케이션과 동일 기준)로 실제 값이 안 바뀐 것만 정확히 골라 삭제 + 영향받은 상품의 `last_important_change_at`을 남은 정상 로그 기준으로 재계산했다(`20260916030000_cleanup_bogus_campaign_visibility_logs.sql`). **DB에서 온 timestamptz 값과 애플리케이션에서 새로 계산한 timestamp를 비교할 때는 절대 문자열(`!==`)로 비교하지 않는다 — 항상 `new Date(x).getTime()`으로 변환해 비교한다.** 같은 세션에서 `promotion_sync_state`(Row 존재 여부로 상태 판단하지 않기)에 이어 "DB가 돌려주는 표현과 코드가 새로 만든 표현이 겉보기엔 다르지만 의미는 같을 수 있다"는 패턴이 두 번째로 실제 사고를 냈다 — 이런 비교는 항상 의심하고 직접 확인한다.
 - ⚠️ **브랜드/제품명이 모두 비어 정상 스킵되는 Row(§5)를 엔진이 아무 기록 없이 조용히 `continue`하고 있었다** — `received_row_count`(Apps Script가 보낸 행 수)와 실제 처리 건수가 어긋났을 때 원인을 전혀 알 수 없었다(2026-09-16 `syncAll` 최종 검증 중 발견: permanent 191행 수신, 190건만 존재). `sync_logs.skipped_count`/`skipped_detail`을 추가해 스킵된 Row 번호와 사유를 기록하게 하자, 바로 다음 실행에서 "Row 1024, 브랜드/제품명 공백"이라는 정확한 원인이 드러났다. **"정상적으로 무시하는 경우"도 그냥 넘어가지 말고, 그 사실 자체를 사후 감사 가능한 형태로 남겨야 나중에 "왜 숫자가 안 맞지?"라는 질문에 코드를 다시 뒤지지 않고 답할 수 있다.**
+
+## Phase 9(Training Material System) SKIP 결정 (2026-09-17)
+
+- **별도 Training Material System(전용 테이블 4종/Bottom Nav 탭/Admin UI)은 구현하지 않기로 확정했다.** 신상품 교육/제품 가이드/상담 가이드/브랜드 교육 등 기존 교육자료 용도는 **Phase 8 Notice System**의 첨부파일(`attachments`)/외부링크(`notices.external_link`)/필독(`requires_confirmation`)/확인완료(`notice_reads.confirmed_at`)/Targeting(`notice_targets`)으로 전부 대체한다. 근거: 교육자료가 요구하는 기능이 공지사항과 완전히 동일한 구조라 별도 시스템을 유지할 이유가 없다는 사용자 판단. 상세: docs/product-requirements.md §4.6.
+- 공지 유형(`notice_type`)에 `교육`을 추가했다(교육 목적 공지 구분용, 변경 중요도는 다른 정보성 유형과 동일하게 `minor`) — Change Classification 로직은 새로 만들지 않는다(절대 원칙 7).
+- Bottom Navigation을 `[홈][프로모션][공지][교육자료][MY]` 5탭에서 **`[홈][프로모션][공지][MY]` 4탭**으로 정리했다. `/training` Placeholder Route도 제거했다 — 남겨둘 이유가 없는 죽은 코드를 그대로 두지 않는다.
+- 이 결정 이후 문서상 `training_materials`/`training_material_*` 테이블은 **계획 기록으로만 남아있고 실제로 존재하지 않는다**(database-schema.md §4, permissions.md 참조) — 향후 이 테이블들을 실제로 만들 필요가 생기면 이 SKIP 결정을 먼저 뒤집어야 한다.
+
+## Phase 10 Realtime 도입 (2026-09-17)
+
+- **`supabase_realtime` Publication은 기본적으로 테이블이 하나도 안 걸려있다.** `alter publication supabase_realtime add table ...`로 명시적으로 추가해야 한다(실측 확인 — `puballtables=false`, 멤버 0개였음). `promotions`/`event_campaigns`/`notices` 3개만 추가했다 — "무분별하게 구독하지 않는다"는 지시사항에 따라 `notice_reads`/`promotion_change_logs` 등은 구독 대상에서 제외.
+- ⚠️ **Realtime의 RLS 적용 여부를 문서만 믿고 넘어가지 않았다 — 실제로 재현·확인함.** STAFF 세션으로 자신이 볼 수 없는 행(비활성 상품, 다른 매장 전용 공지)의 UPDATE를 구독했을 때 이벤트가 오는지, 반대로 볼 수 있는 행은 정상 수신되는지 둘 다 스크립트로 확인했다(`scripts/test-realtime-rls.ts`) — Phase 6.5의 "View는 기본적으로 RLS를 우회한다"를 실측으로 발견했던 것과 같은 습관. 결과: Supabase Realtime의 `postgres_changes`는 실제로 RLS를 그대로 적용한다(정상 동작 확인, 별도 정책 불필요).
+- ⚠️ **브라우저에서 구독이 "SUBSCRIBED"로 성공했는데도 이벤트가 하나도 안 오는 함정을 실제로 겪었다.** `createBrowserClient`(쿠키 기반 세션)는 세션을 비동기로 읽는데, `channel.subscribe()`를 그 로드보다 먼저 호출하면 Realtime 소켓이 anon 권한으로 붙어버린다 — 채널 자체는 정상 구독된 것처럼 보이지만(status: SUBSCRIBED) RLS가 모든 행을 막아 조용히 아무 이벤트도 안 온다. Node 스크립트(로그인 완료 후에만 구독)에서는 100% 재현이 안 되고 브라우저에서만 재현돼 원인 파악에 시간이 걸렸다. **해결**: `supabase.auth.getSession()`으로 세션을 먼저 확보하고 `await supabase.realtime.setAuth(session.access_token)`을 명시적으로 호출한 뒤에만 `channel.subscribe()`한다(`src/components/realtime/realtime-update-banner.tsx`). **앞으로 브라우저에서 Realtime을 구독하는 코드를 새로 만들 때는 항상 이 순서(getSession → setAuth → subscribe)를 지킨다 — "구독 성공"과 "이벤트 수신"은 별개로 확인해야 하는 것으로 취급한다.**
+- UX는 데이터가 바뀌었다고 화면을 자동으로 바꾸거나 스크롤을 리셋하지 않는다 — 배너를 띄우고 사용자가 [새로고침]을 눌렀을 때만 `router.refresh()`한다. 검색/필터/페이지네이션이 전부 서버 쿼리 기준이라 Realtime payload를 클라이언트에서 직접 머지하면 그 상태와 어긋날 위험이 커서, Realtime은 "새 데이터가 있다"는 신호로만 쓰고 실제 데이터는 항상 RLS가 적용된 서버 재조회로 가져온다.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

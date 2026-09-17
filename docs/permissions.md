@@ -36,8 +36,8 @@ Public Sign-up 없음. 계정은 ADMIN이 초대/생성. 비활성화된 계정�
 - INSERT/UPDATE/DELETE notices: `ADMIN`만
 - `notice_reads`: 본인 행만 INSERT/UPDATE 가능, SELECT는 본인 것 + ADMIN 전체
 
-### `training_materials` 계열
-- notices와 동일 패턴 (대상자만 SELECT, ADMIN만 쓰기, 읽음/완료는 본인만 갱신)
+### `training_materials` 계열 — Phase 9 SKIP(2026-09-17), 구현 안 함
+교육자료는 `notices` 계열 RLS를 그대로 쓴다(별도 정책 없음). product-requirements.md §4.6 참조.
 
 ### `push_subscriptions`
 - 본인 소유 행만 SELECT/INSERT/DELETE 가능 (§76 — 사용자는 자신의 Subscription만 등록/해제)

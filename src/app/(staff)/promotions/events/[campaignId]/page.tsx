@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { PaginationBar } from "@/components/promotions/pagination-bar";
 import { PromotionCard } from "@/components/promotions/promotion-card";
 import { PromotionFilterBar } from "@/components/promotions/promotion-filter-bar";
+import { RealtimeUpdateBanner } from "@/components/realtime/realtime-update-banner";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCampaignProducts,
@@ -63,6 +64,15 @@ export default async function EventCampaignPage({
       <Link href="/promotions?tab=event" className="text-xs font-bold text-text-3">
         ← 행사 목록
       </Link>
+
+      <RealtimeUpdateBanner
+        channelName={`campaign-detail-${campaignId}`}
+        watches={[
+          { table: "promotions", event: "*" },
+          { table: "event_campaigns", event: "UPDATE", filter: `id=eq.${campaignId}` },
+        ]}
+        label="행사 정보가 업데이트되었습니다."
+      />
 
       <div>
         <Badge variant="solid">🔥 진행 중인 행사</Badge>

@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
+// Phase 9(Training Material System) SKIP 결정(2026-09-17)으로 [교육자료] 탭을 없앴다 —
+// 교육 목적 공지는 notice_type='교육'으로 Notice 탭에 통합됐다(CLAUDE.md 참조).
 const NAV_ITEMS = [
   { href: "/", label: "홈", icon: HomeIcon },
   { href: "/promotions", label: "프로모션", icon: TagIcon },
   { href: "/notices", label: "공지", icon: BellIcon },
-  { href: "/training", label: "교육자료", icon: BookIcon },
   { href: "/my", label: "MY", icon: UserIcon },
 ] as const;
 
@@ -94,20 +95,6 @@ function BellIcon({ className, active }: { className?: string; active?: boolean 
         strokeLinejoin="round"
       />
       <path d="M10 19.5a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth={active ? 2 : 1.6} />
-    </svg>
-  );
-}
-
-function BookIcon({ className, active }: { className?: string; active?: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 0 5 21.5v-16Z"
-        stroke="currentColor"
-        strokeWidth={active ? 2 : 1.6}
-        strokeLinejoin="round"
-      />
-      <path d="M8 8h8M8 11.5h8" stroke="currentColor" strokeWidth={active ? 2 : 1.6} strokeLinecap="round" />
     </svg>
   );
 }

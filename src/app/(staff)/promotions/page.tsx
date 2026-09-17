@@ -3,6 +3,7 @@ import { PaginationBar } from "@/components/promotions/pagination-bar";
 import { PromotionCard } from "@/components/promotions/promotion-card";
 import { PromotionFilterBar } from "@/components/promotions/promotion-filter-bar";
 import { PromotionTabs } from "@/components/promotions/promotion-tabs";
+import { RealtimeUpdateBanner } from "@/components/realtime/realtime-update-banner";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCampaignProductCount,
@@ -80,6 +81,15 @@ export default async function PromotionsPage({
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 p-6 pb-4">
       <h1 className="text-lg font-black">프로모션</h1>
+
+      <RealtimeUpdateBanner
+        channelName={`promotions-list-${tab}`}
+        watches={[
+          { table: "promotions", event: "*" },
+          { table: "event_campaigns", event: "*" },
+        ]}
+        label="프로모션 정보가 업데이트되었습니다."
+      />
 
       <PromotionTabs activeTab={tab} hasVisibleEvents={visibleCampaigns.length > 0} />
 

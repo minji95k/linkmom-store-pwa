@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AttachmentList } from "@/components/notices/attachment-list";
 import { ConfirmNoticeButton } from "@/components/notices/confirm-notice-button";
 import { NoticeTypeBadge } from "@/components/notices/notice-badge";
+import { RealtimeUpdateBanner } from "@/components/realtime/realtime-update-banner";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { formatDateTimeKST } from "@/lib/format";
 import { getAttachmentsForNotice, getNoticeForStaffDetail, markNoticeRead } from "@/lib/notices/queries";
@@ -36,6 +37,12 @@ export default async function NoticeDetailPage({ params }: { params: Promise<{ i
       <Link href="/notices" className="text-xs font-bold text-text-3">
         ← 공지 목록
       </Link>
+
+      <RealtimeUpdateBanner
+        channelName={`notice-detail-${notice.id}`}
+        watches={[{ table: "notices", event: "UPDATE", filter: `id=eq.${notice.id}` }]}
+        label="이 공지 내용이 수정되었습니다."
+      />
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1.5">

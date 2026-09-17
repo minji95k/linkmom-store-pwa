@@ -17,6 +17,7 @@ const NOTICE_TYPES: NoticeType[] = [
   "공급가변경",
   "운영",
   "시스템",
+  "교육",
 ];
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
