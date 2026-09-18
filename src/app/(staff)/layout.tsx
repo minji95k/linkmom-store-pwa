@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 
 import { BottomNav } from "@/components/bottom-nav";
+import { AppBadgeSync } from "@/components/notifications/app-badge-sync";
 import { getCurrentUser } from "@/lib/auth/get-current-user";
 import { getUnreadNoticeCount } from "@/lib/notices/queries";
+import { getUnreadCriticalNotificationCount } from "@/lib/notifications/queries";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -20,12 +22,16 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   }
 
   const supabase = await createClient();
-  const unreadNoticeCount = await getUnreadNoticeCount(supabase, currentUser.id);
+  const [unreadNoticeCount, unreadCriticalNotificationCount] = await Promise.all([
+    getUnreadNoticeCount(supabase, currentUser.id),
+    getUnreadCriticalNotificationCount(supabase, currentUser.id),
+  ]);
 
   return (
     <div className="min-h-dvh pb-20">
       {children}
       <BottomNav initialUnreadNoticeCount={unreadNoticeCount} />
+      <AppBadgeSync count={unreadCriticalNotificationCount} />
     </div>
   );
 }

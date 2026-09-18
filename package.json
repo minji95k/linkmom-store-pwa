@@ -23,7 +23,12 @@
     "test:apps-script:retry": "node --import tsx scripts/test-apps-script-retry.ts",
     "test:apps-script:trigger-lifecycle": "node --import tsx scripts/test-apps-script-trigger-lifecycle.ts",
     "test:timestamps-equal": "node --import tsx scripts/test-timestamps-equal.ts",
-    "test:promotion-rls": "node --env-file=.env.local --import tsx scripts/test-promotion-rls.ts"
+    "test:promotion-rls": "node --env-file=.env.local --import tsx scripts/test-promotion-rls.ts",
+    "test:push-deep-link": "node --import tsx scripts/test-push-deep-link.ts",
+    "test:push-batch-logic": "node --import tsx scripts/test-push-batch-logic.ts",
+    "test:push-invalid-subscription-cleanup": "node --import tsx scripts/test-push-invalid-subscription-cleanup.ts",
+    "test:push-subscriptions-rls": "node --env-file=.env.local --import tsx scripts/test-push-subscriptions-rls.ts",
+    "test:push-send-authorization": "node --env-file=.env.local --import tsx scripts/test-push-send-authorization.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -37,6 +42,7 @@
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
+    "web-push": "^3.6.7",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -45,6 +51,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.4",
     "tailwindcss": "^4.3.3",

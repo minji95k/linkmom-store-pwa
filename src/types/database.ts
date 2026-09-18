@@ -48,6 +48,12 @@ export type PromotionChangeType =
   | "configuration"
   | "minor_edit";
 
+/** Phase 11: notifications.type — 20260917400000_push_notifications.sql */
+export type NotificationType = "notice" | "promotion_change" | "summary";
+/** notice_target_type을 재사용(셰이프 동일) — notification_targets.target_type도 같은 enum이다. */
+export type NotificationTargetType = NoticeTargetType;
+export type NotificationDeliveryStatus = "requested" | "sent" | "failed" | "expired";
+
 export interface Database {
   public: {
     Tables: {
@@ -368,6 +374,8 @@ export interface Database {
           importance: ChangeImportance;
           source_sheet: PromotionType;
           push_eligible: boolean;
+          /** Phase 11: 이미 어떤 notification(개별/summary)으로 처리됐는지. NULL=미처리. */
+          notification_id: string | null;
           changed_at: string;
         };
         Insert: {
@@ -383,7 +391,9 @@ export interface Database {
           push_eligible?: boolean;
           changed_at?: string;
         };
-        Update: Record<string, never>;
+        Update: {
+          notification_id?: string | null;
+        };
         Relationships: [];
       };
       event_campaigns: {
@@ -495,6 +505,132 @@ export interface Database {
         };
         Relationships: [];
       };
+      notification_settings: {
+        Row: {
+          id: number;
+          push_go_live_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          push_go_live_at?: string;
+        };
+        Update: {
+          push_go_live_at?: string;
+        };
+        Relationships: [];
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          user_agent: string | null;
+          is_active: boolean;
+          created_at: string;
+          last_used_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          user_agent?: string | null;
+          is_active?: boolean;
+          last_used_at?: string;
+        };
+        Update: {
+          is_active?: boolean;
+          last_used_at?: string;
+          p256dh?: string;
+          auth?: string;
+        };
+        Relationships: [];
+      };
+      notifications: {
+        Row: {
+          id: string;
+          type: NotificationType;
+          title: string;
+          body: string;
+          importance: ChangeImportance;
+          deep_link: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          type: NotificationType;
+          title: string;
+          body: string;
+          importance?: ChangeImportance;
+          deep_link: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      notification_targets: {
+        Row: {
+          id: string;
+          notification_id: string;
+          target_type: NotificationTargetType;
+          store_id: string | null;
+          role: UserRole | null;
+          user_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          notification_id: string;
+          target_type: NotificationTargetType;
+          store_id?: string | null;
+          role?: UserRole | null;
+          user_id?: string | null;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      notification_reads: {
+        Row: {
+          notification_id: string;
+          user_id: string;
+          read_at: string;
+        };
+        Insert: {
+          notification_id: string;
+          user_id: string;
+          read_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      notification_deliveries: {
+        Row: {
+          id: string;
+          notification_id: string;
+          subscription_id: string;
+          status: NotificationDeliveryStatus;
+          error_message: string | null;
+          created_at: string;
+          sent_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          notification_id: string;
+          subscription_id: string;
+          status?: NotificationDeliveryStatus;
+          error_message?: string | null;
+          sent_at?: string | null;
+        };
+        Update: {
+          status?: NotificationDeliveryStatus;
+          error_message?: string | null;
+          sent_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       event_campaigns_visible: {
@@ -509,6 +645,7 @@ export interface Database {
       current_role: { Args: Record<string, never>; Returns: UserRole };
       next_product_id: { Args: Record<string, never>; Returns: string };
       mark_initial_import_completed: { Args: { p_promotion_type: PromotionType }; Returns: undefined };
+      notification_visible_to_current_user: { Args: { target_notification_id: string }; Returns: boolean };
     };
     Enums: {
       user_role: UserRole;
@@ -517,6 +654,7 @@ export interface Database {
       promotion_type: PromotionType;
       change_importance: ChangeImportance;
       promotion_change_type: PromotionChangeType;
+      notification_type: NotificationType;
     };
   };
 }

@@ -1,4 +1,25 @@
-# Push Design (Phase 2)
+# Push Design (Phase 2 설계 → Phase 11 구현 완료, 2026-09-18)
+
+> ✅ **Phase 11 구현 완료**: 아래 설계 대부분이 그대로 구현되었다. 실제 구현이 설계와
+> 달라진 지점만 표시한다(⚙️ 구현 노트):
+> - §3.2 컷오버 시각은 환경변수가 아니라 **`notification_settings` 싱글턴 테이블**의
+>   `push_go_live_at`로 저장했다(Phase 12 Admin UI가 필요 시 갱신 가능하도록).
+> - §5 Batching Window는 별도 타이머 큐 대신 **"Sync API 1회 호출이 만든 change_log
+>   집합"을 그대로 윈도우로 사용**한다 — Apps Script가 이미 onEdit을 3초 디바운스로
+>   묶어 한 번의 Sync 호출로 보내므로 별도 시간 기반 큐가 불필요했다.
+> - §7 "최근 변경 요약" 딥링크는 `/promotions/updates`가 아니라 실제 존재하는
+>   `/promotions?tab=new`로 보정했다.
+> - §5 "important는 묶는다"는 **change_log 건수가 아니라 대상 상품(promotion_id) 개수**로
+>   판단한다(`shouldSendImportantAsSummary`) — 실 iPhone E2E로 발견/수정(2026-09-18, CLAUDE.md
+>   참조). 상품 1개(필드가 여러 개 동시에 바뀌어도)는 §10 형식의 개별 알림, 2개 이상만 Summary.
+> - §10 알림 문구의 필드 라벨은 `promotion_field_definitions.display_label`(Core Field는
+>   Sheet 헤더 원문)이 아니라 `src/lib/push/policy.ts`의 `CORE_FIELD_SHORT_LABEL`(상품 상세
+>   화면과 동일 용어)을 우선 사용한다 — 실 iPhone E2E로 발견/수정(2026-09-18).
+> - 구현 위치: `src/lib/push/*`(정책/발송/타겟팅/생성), `supabase/migrations/20260917400000_push_notifications.sql`,
+>   `public/sw.js`(push/notificationclick), `src/components/push/*`, `src/app/(staff)/notifications/`.
+> - **실 iPhone PWA E2E 검증 완료**(2026-09-18): 홈 화면 설치 → 알림 받기 → Subscription 생성 →
+>   실 DEV Sheet 가격 변경 → Push 수신 → 상품 상세 딥링크 → 공지(필독) Push → 상세 딥링크 →
+>   read/confirm → 알림 해제/재활성화까지 전부 실기기로 확인. 상세: CLAUDE.md "Phase 11 완료" 절.
 
 ## 1. 표준
 

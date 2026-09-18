@@ -1,7 +1,12 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { PushPermissionCard } from "@/components/push/push-permission-card";
 import { SignOutButton } from "@/components/sign-out-button";
 import { getCurrentUser, storeLabel } from "@/lib/auth/get-current-user";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +16,7 @@ const ROLE_LABEL: Record<string, string> = {
   STAFF: "매장 직원",
 };
 
-/**
- * Phase 7 범위: 프로필/소속 매장 조회 + 로그아웃만. Push 수신 설정/비밀번호 변경은
- * Phase 8 이후(Push는 Phase 11)에 이 화면에 추가된다 — 지금은 자리만 잡아둔다.
- */
+/** Phase 7: 프로필/소속 매장 조회 + 로그아웃. Phase 11: 알림 받기 카드 + 알림함 링크. */
 export default async function MyPage() {
   const currentUser = (await getCurrentUser())!;
 
@@ -46,9 +48,15 @@ export default async function MyPage() {
         </a>
       )}
 
+      <PushPermissionCard />
+
+      <Link href="/notifications" className={cn(buttonVariants({ variant: "outline" }), "justify-center")}>
+        알림함 보기 →
+      </Link>
+
       <Card>
         <CardContent className="flex flex-col gap-2 pt-1">
-          <p className="text-xs text-text-3">Push 수신 설정 / 비밀번호 변경은 이후 Phase에서 제공됩니다.</p>
+          <p className="text-xs text-text-3">비밀번호 변경은 이후 Phase에서 제공됩니다.</p>
           <SignOutButton />
         </CardContent>
       </Card>

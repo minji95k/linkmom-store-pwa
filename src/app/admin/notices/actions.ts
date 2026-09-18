@@ -4,8 +4,10 @@ import { randomUUID } from "node:crypto";
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/get-current-user";
+import { notifyNoticeCreated } from "@/lib/push/notify-notice";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import type { Database, NoticeType, UserRole } from "@/types/database";
@@ -118,6 +120,15 @@ export async function createNoticeAction(_prevState: NoticeFormState, formData: 
 
   const files = formData.getAll("attachments").filter((f): f is File => f instanceof File);
   await uploadAttachments(notice.id, currentUser.id, files);
+
+  // Phase 11 §11: 긴급/중요/필독 신규 공지만 Push(notifyNoticeCreated 내부에서 판정).
+  // notice_targets를 그대로 재사용하므로 별도 대상 계산이 없다. 응답(redirect) 후
+  // best-effort로 실행 — 실패해도 공지 등록 자체는 이미 완료된 뒤다.
+  after(() =>
+    notifyNoticeCreated(notice.id, noticeType, title).catch((error) => {
+      console.error("notifyNoticeCreated 실패:", error);
+    }),
+  );
 
   revalidatePath("/notices");
   revalidatePath("/");

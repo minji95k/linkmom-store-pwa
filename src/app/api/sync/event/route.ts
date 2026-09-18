@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
+import { processPendingPromotionPush } from "@/lib/push/process-promotion-changes";
 import { verifySyncSecret } from "@/lib/sync/authenticate";
 import { runPromotionSync } from "@/lib/sync/engine";
 import { syncRequestSchema } from "@/lib/sync/validate-request";
@@ -24,5 +25,15 @@ export async function POST(request: Request) {
   // 안전장치가 대량 비활성화를 막아 Sync를 실패시킨 경우는 409(Conflict)로,
   // 그 외 실패는 500으로 구분한다 — Apps Script/관리자가 원인을 바로 구분할 수 있다.
   const status = result.success ? 200 : result.deactivationGuard.blocked ? 409 : 500;
+
+  // Phase 11: permanent와 동일 — Sync 1회의 change_log 집합을 Push Batching Window로 쓴다.
+  if (result.success) {
+    after(() =>
+      processPendingPromotionPush().catch((error) => {
+        console.error("processPendingPromotionPush 실패(event):", error);
+      }),
+    );
+  }
+
   return NextResponse.json(result, { status });
 }

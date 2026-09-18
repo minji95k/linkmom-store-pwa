@@ -39,13 +39,21 @@ Public Sign-up 없음. 계정은 ADMIN이 초대/생성. 비활성화된 계정�
 ### `training_materials` 계열 — Phase 9 SKIP(2026-09-17), 구현 안 함
 교육자료는 `notices` 계열 RLS를 그대로 쓴다(별도 정책 없음). product-requirements.md §4.6 참조.
 
-### `push_subscriptions`
-- 본인 소유 행만 SELECT/INSERT/DELETE 가능 (§76 — 사용자는 자신의 Subscription만 등록/해제)
-- STAFF는 Push 발송 API 호출 불가 (서버 Route에서 Role 체크, RLS로도 이중 방어)
+### `push_subscriptions` ✅ Phase 11 구현·실측 검증 완료(`scripts/test-push-subscriptions-rls.ts`, 11/11 PASS)
+- 본인 소유 행만 SELECT/INSERT/UPDATE/DELETE 가능 (§76 — 사용자는 자신의 Subscription만 등록/해제), ADMIN은 전체 SELECT
+- `/api/push/subscribe` Route는 세션으로 로그인 여부만 확인한 뒤 Service Role로 upsert한다(공유 매장 태블릿에서 같은 endpoint의 소유자가 다른 계정으로 재할당될 수 있어야 하기 때문 — RLS의 "본인 소유 행만" 제약은 이 케이스를 표현할 수 없다). RLS 자체는 API를 우회한 직접 접근에 대한 방어선으로 그대로 유지.
+- Push "발송" 자체를 트리거하는 공개 Route가 애초에 없다 — `src/lib/push/*`는 서버 코드(Sync Route 이후 훅, 공지 생성 Action)에서만 import된다.
 
-### `notification_deliveries` / `notifications`
-- SELECT: 본인에게 발송된 것만 (STAFF/STORE_MANAGER), ADMIN은 전체 + Delivery 결과 조회
-- INSERT: 서버(Service Role) 전용
+### `notifications` / `notification_targets` / `notification_deliveries` ✅ Phase 11 구현·실측 검증 완료(`scripts/test-push-send-authorization.ts`, 7/7 PASS)
+- SELECT: 대상자(`notification_visible_to_current_user`, notice와 동일 패턴)만, ADMIN은 전체
+- INSERT/UPDATE/DELETE: 정책 자체가 없음 — authenticated가 직접 쓰기를 시도하면 RLS가 즉시 거부(실측: "new row violates row-level security policy"). 오직 Service Role(`src/lib/push/create-notification.ts`)만 쓴다.
+- `notification_deliveries` SELECT: 본인 소유 `push_subscriptions`에 발송된 것만, ADMIN은 전체.
+
+### `notification_reads`
+- notice_reads와 동일 패턴 — 본인 행만 INSERT/SELECT, ADMIN은 전체 SELECT.
+
+### `notification_settings` (Push Go-Live 시각, 싱글턴)
+- SELECT/UPDATE 전부 ADMIN 전용(RLS). STAFF는 GRANT가 있어도 RLS가 0건으로 막는다(실측 확인).
 
 ### `sync_logs` / `audit_logs`
 - SELECT: `ADMIN`만

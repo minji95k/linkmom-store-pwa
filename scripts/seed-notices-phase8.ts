@@ -40,6 +40,14 @@ interface FixtureNotice {
   expires_at?: string | null;
   external_link?: string | null;
   target: { type: TargetType; storeCode?: (typeof STORES)[number]["code"]; role?: "ADMIN" };
+  /**
+   * true면 이미 존재해도 published_at/expires_at을 "지금 실행 시점" 기준으로 다시
+   * 계산해 갱신한다 — "게시 예정"/"게시 종료" 픽스처는 상대 오프셋(+24h/-1h)으로
+   * 만들어지므로, 실행 시점이 지나면 그 "미래/과거"라는 의미 자체가 깨진다(2026-09-18
+   * test:notice-rls 재실행 중 발견 — 절대 시각이 실제로 지나가 버려 "게시 예정" 공지가
+   * 노출돼버렸다). 나머지 픽스처는 시각과 무관해 기존처럼 최초 1회만 만들고 skip한다.
+   */
+  refreshDatesOnRerun?: boolean;
 }
 
 const now = Date.now();
@@ -90,6 +98,7 @@ const FIXTURES: FixtureNotice[] = [
     notice_type: "발주",
     published_at: new Date(now + 24 * HOUR).toISOString(),
     target: { type: "all" },
+    refreshDatesOnRerun: true,
   },
   {
     title: "[DEV Phase8] 게시 종료(비노출) 공지",
@@ -98,6 +107,7 @@ const FIXTURES: FixtureNotice[] = [
     published_at: new Date(now - 48 * HOUR).toISOString(),
     expires_at: new Date(now - HOUR).toISOString(),
     target: { type: "all" },
+    refreshDatesOnRerun: true,
   },
   {
     title: "[DEV Phase8] 외부링크 포함 공지",
@@ -127,7 +137,16 @@ async function main() {
   for (const fixture of FIXTURES) {
     const { data: existing } = await admin.from("notices").select("id").eq("title", fixture.title).maybeSingle();
     if (existing) {
-      console.log(`= ${fixture.title} (이미 존재, 건너뜀)`);
+      if (fixture.refreshDatesOnRerun) {
+        const { error: refreshError } = await admin
+          .from("notices")
+          .update({ published_at: fixture.published_at, expires_at: fixture.expires_at ?? null })
+          .eq("id", existing.id);
+        if (refreshError) throw refreshError;
+        console.log(`~ ${fixture.title} (이미 존재 — published_at/expires_at을 실행 시점 기준으로 갱신)`);
+      } else {
+        console.log(`= ${fixture.title} (이미 존재, 건너뜀)`);
+      }
       continue;
     }
 

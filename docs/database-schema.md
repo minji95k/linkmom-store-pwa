@@ -161,23 +161,33 @@ material_id FK, target_type/store_id/role/user_id — notice_targets와 동일 �
 ### `training_material_reads`
 material_id FK, user_id FK, read_at, completed_at nullable. Unique(material_id, user_id).
 
-## 5. Push / Notification
+## 5. Push / Notification ✅ Phase 11 구현 완료(2026-09-18, `20260917400000_push_notifications.sql`)
+
+### `notification_settings` (싱글턴, id=1 고정)
+push_go_live_at timestamptz(기본 `now()` — 마이그레이션 적용 시각이 곧 컷오버 시각), updated_at. ADMIN만 SELECT/UPDATE 가능(RLS).
 
 ### `push_subscriptions`
-id, user_id FK, endpoint text unique, p256dh text, auth text, device_label text nullable, created_at, last_seen_at.  
-(User:Device = 1:N — 실측 요구사항 §59와 일치)
+id, user_id FK, endpoint text unique, p256dh text, auth text, **user_agent** text nullable(설계 초안의 `device_label` 대신 실제 UA를 기록), is_active boolean, created_at, **last_used_at**.
+(User:Device = 1:N — 실측 요구사항 §59와 일치). 본인 소유 행만 SELECT/INSERT/UPDATE/DELETE(RLS), ADMIN은 전체 SELECT.
 
 ### `notifications`
-id, type(`notice`\|`training`\|`price_change`\|`promotion_change`\|`event`\|`summary`), title, body, importance, deep_link, created_at.
+id, type(`notice`\|`promotion_change`\|`summary` — 설계 초안의 `price_change`/`event`/`training`은 실제로는 `promotion_change` 하나로 통합, Phase 9 SKIP로 `training` 제외), title, body, importance(`critical`\|`important`\|`minor`), deep_link, created_at. 쓰기(INSERT)는 Service Role 전용 — authenticated에게 쓰기 정책 자체가 없다.
 
 ### `notification_targets`
-notification_id FK, target_type/store_id/role/user_id.
+notification_id FK, target_type(**`notice_target_type` enum 재사용** — `all`\|`store`\|`role`\|`user`)/store_id/role/user_id, notice_targets와 동일한 shape CHECK.
+
+### `notification_reads` (설계 초안엔 없었으나 Notification Center 읽음 상태 추적을 위해 추가)
+notification_id FK, user_id FK, read_at. Unique(notification_id, user_id) — notice_reads와 동일 패턴.
 
 ### `notification_deliveries`
-id, notification_id FK, subscription_id FK, status(`requested`\|`sent`\|`failed`\|`expired`), sent_at, error_message nullable.
+id, notification_id FK, subscription_id FK, status(`requested`\|`sent`\|`failed`\|`expired`), sent_at, error_message nullable, created_at.
 
-### `user_notification_preferences`
-user_id FK (PK), push_enabled boolean, categories jsonb (카테고리별 on/off, 필요 시).
+### `promotion_change_logs.notification_id` (기존 테이블에 컬럼 1개 추가)
+nullable FK → notifications. NULL이면 아직 Push/Notification으로 처리되지 않은 미처리 변경(발송 대기 큐 역할을 겸함) — 여러 change_log가 summary notification 1건에 몰릴 수 있어 N:1.
+
+> `user_notification_preferences`(카테고리별 on/off)는 Phase 11에서 만들지 않았다 — "일반공지까지
+> Push할지"는 `src/lib/push/policy.ts`의 `NOTICE_TYPES_PUSH_ELIGIBLE` 상수(코드 레벨 정책)로
+> 충분했고, 사용자별 세분화 설정 요구가 아직 없어 YAGNI로 보류했다. 필요해지면 이 테이블을 추가한다.
 
 ## 6. Sync / Audit
 

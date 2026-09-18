@@ -64,3 +64,56 @@ self.addEventListener("fetch", (event) => {
     fetch(request).catch(() => caches.match("/").then((res) => res ?? Response.error())),
   );
 });
+
+// ---------------------------------------------------------------------------
+// Phase 11: Web Push. 앱이 Background/종료 상태일 때만 의미가 있다 — Foreground에서는
+// Phase 10 Realtime Banner가 이미 알려주므로(push-design.md §8, §15) Service Worker는
+// "지금 이 페이지가 떠 있는지"를 구분하지 않고 항상 OS 알림을 띄운다. 중복 노출을
+// 완전히 막으려면 클라이언트가 Foreground 여부를 SW에 알려야 하는데, 그건 이 범위를
+// 넘는 복잡도라 Phase 11에서는 "Realtime Banner + OS 알림이 동시에 뜰 수 있음"을
+// 감수한다(Foreground에서 알림을 못 보는 것보다 안전한 쪽).
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+
+  const { title, body, deepLink, notificationId } = payload;
+  if (!title) return;
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: body ?? "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: notificationId ?? undefined, // 같은 notification의 중복 표시를 자연스럽게 합친다.
+      data: { url: deepLink ?? "/" },
+    }),
+  );
+});
+
+// 클릭 시 Deep Link로 이동한다(§14). 이미 열려있는 탭이 있으면 그 탭을 포커스+이동,
+// 없으면 새 탭을 연다 — 로그인 안 돼 있으면 proxy.ts가 /login?next=<deepLink>로
+// 알아서 보내고, 로그인 후 next 파라미터로 원래 위치에 복귀한다(이미 구현돼 있음,
+// 이 Service Worker는 그냥 deepLink로 이동시키기만 하면 된다).
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url ?? "/";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
+          client.focus();
+          if ("navigate" in client) return client.navigate(url);
+          return;
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});
