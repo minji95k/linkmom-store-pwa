@@ -33,8 +33,17 @@ export async function resolveTargetUserIds(service: Client, targets: PushTarget[
     for (const u of data ?? []) userIds.add(u.id);
   }
 
-  for (const t of targets) {
-    if (t.targetType === "user" && t.userId) userIds.add(t.userId);
+  // Phase 13 Security Gap #2 수정: 개인 지정 대상도 다른 분기(all/role/store)와 동일하게
+  // is_active=true인 사용자만 최종 대상에 포함한다 — 비활성화된 사람을 직접 지정해도
+  // push_subscriptions가 남아있으면 발송되던 gap이었다.
+  const individualIds = targets.filter((t) => t.targetType === "user" && t.userId).map((t) => t.userId!);
+  if (individualIds.length > 0) {
+    const { data: activeIndividuals } = await service
+      .from("profiles")
+      .select("id")
+      .eq("is_active", true)
+      .in("id", individualIds);
+    for (const u of activeIndividuals ?? []) userIds.add(u.id);
   }
 
   const storeIds = targets.filter((t) => t.targetType === "store").map((t) => t.storeId!);

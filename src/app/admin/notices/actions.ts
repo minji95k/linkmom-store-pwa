@@ -16,10 +16,15 @@ export interface NoticeFormState {
   error: string | null;
 }
 
-/** 이 파일의 모든 Action은 admin/layout.tsx의 role 게이트를 다시 한번 자체 검증한다(§14, CLAUDE.md 서버 사이드 이중 방어). */
+/**
+ * 이 파일의 모든 Action은 admin/layout.tsx의 role 게이트를 다시 한번 자체 검증한다(§14, CLAUDE.md 서버 사이드 이중 방어).
+ * Phase 13 Security Gap #1 수정: is_active까지 확인해, 비활성화된 ADMIN이 기존 세션으로
+ * Notice Admin Action(생성/수정/첨부파일)을 실행할 수 없게 한다 — admin/users/actions.ts의
+ * requireAdmin()과 동일한 패턴.
+ */
 async function requireAdmin() {
   const currentUser = await getCurrentUser();
-  if (!currentUser || currentUser.profile.role !== "ADMIN") {
+  if (!currentUser || !currentUser.profile.is_active || currentUser.profile.role !== "ADMIN") {
     throw new Error("관리자만 사용할 수 있습니다.");
   }
   return currentUser;

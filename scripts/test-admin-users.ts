@@ -403,10 +403,10 @@ async function main() {
       );
 
       note(
-        "E4. src/lib/push/targeting.ts의 개인 지정('user' target) 분기는 is_active 필터가 없다(코드 확인, " +
-          "resolveTargetUserIds의 `if (t.targetType === \"user\" && t.userId) userIds.add(t.userId)` — 무조건 추가). " +
-          "즉 특정 개인을 콕 집어 지정한 공지/알림은 그 사람이 비활성화돼도 대상에 남을 수 있다. " +
-          "지시사항(§16)에 따라 Push Architecture는 이번 Phase에서 변경하지 않았다 — Phase 13 Security Review로 넘긴다.",
+        "E4. [Phase 13에서 수정 완료] src/lib/push/targeting.ts의 개인 지정('user' target) 분기가 " +
+          "당시(Phase 12) 시점엔 is_active 필터가 없었다 — Security Gap #2로 Phase 13 Security Review에 " +
+          "넘겼고, resolveTargetUserIds가 다른 분기(all/role/store)와 동일하게 is_active=true만 최종 " +
+          "포함하도록 수정됐다(scripts/test-security-review.ts에서 회귀 테스트로 별도 검증).",
       );
 
       await service.from("profiles").update({ is_active: true }).eq("id", mainTestUserId);
