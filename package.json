@@ -28,7 +28,8 @@
     "test:push-batch-logic": "node --import tsx scripts/test-push-batch-logic.ts",
     "test:push-invalid-subscription-cleanup": "node --import tsx scripts/test-push-invalid-subscription-cleanup.ts",
     "test:push-subscriptions-rls": "node --env-file=.env.local --import tsx scripts/test-push-subscriptions-rls.ts",
-    "test:push-send-authorization": "node --env-file=.env.local --import tsx scripts/test-push-send-authorization.ts"
+    "test:push-send-authorization": "node --env-file=.env.local --import tsx scripts/test-push-send-authorization.ts",
+    "test:admin-users": "node --env-file=.env.local --import tsx scripts/test-admin-users.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

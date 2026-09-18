@@ -11,11 +11,21 @@ import { getCurrentUser } from "@/lib/auth/get-current-user";
  * (docs/permissions.md §4, node_modules/next/dist/docs 의 proxy.md
  * "Migration to Proxy" 절 참조). STAFF/STORE_MANAGER가 /admin URL을 직접
  * 입력해도 이 redirect가 항상 실행된다 — 프론트엔드 메뉴 숨김에 의존하지 않는다.
+ *
+ * Phase 12: 계정이 비활성화된 채로 남은 기존 세션은 RLS로 데이터만 막는 것이 아니라
+ * 세션 자체를 끊는다(/auth/deactivated가 signOut 후 /login으로 보낸다) — proxy.ts는
+ * 건드리지 않고 기존 로그아웃 흐름을 재사용한다.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const currentUser = await getCurrentUser();
 
-  if (!currentUser || currentUser.profile.role !== "ADMIN") {
+  if (!currentUser) {
+    redirect("/login");
+  }
+  if (!currentUser.profile.is_active) {
+    redirect("/auth/deactivated");
+  }
+  if (currentUser.profile.role !== "ADMIN") {
     redirect("/");
   }
 

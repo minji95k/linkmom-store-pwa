@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import { ChangePasswordForm } from "@/components/my/change-password-form";
 import { PushPermissionCard } from "@/components/push/push-permission-card";
 import { SignOutButton } from "@/components/sign-out-button";
 import { getCurrentUser, storeLabel } from "@/lib/auth/get-current-user";
@@ -55,8 +56,13 @@ export default async function MyPage() {
       </Link>
 
       <Card>
-        <CardContent className="flex flex-col gap-2 pt-1">
-          <p className="text-xs text-text-3">비밀번호 변경은 이후 Phase에서 제공됩니다.</p>
+        <CardContent className="pt-1">
+          <ChangePasswordForm />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-1">
           <SignOutButton />
         </CardContent>
       </Card>

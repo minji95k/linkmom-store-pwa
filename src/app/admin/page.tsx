@@ -42,6 +42,13 @@ export default async function AdminPage() {
       </Card>
 
       <Link
+        href="/admin/users"
+        className="rounded-xl border border-border bg-card p-4 text-center text-sm font-bold text-text hover:bg-bg"
+      >
+        직원 관리(Phase 12) →
+      </Link>
+
+      <Link
         href="/admin/notices"
         className="rounded-xl border border-border bg-card p-4 text-center text-sm font-bold text-text hover:bg-bg"
       >
