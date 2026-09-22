@@ -12,6 +12,7 @@ import {
   resolveCampaignField,
   resolveCoreField,
 } from "./core-fields";
+import { computeNewPromotionFields } from "./initial-import";
 import { DEFAULT_DEACTIVATION_SAFETY, evaluateDeactivationSafety } from "./safety";
 import { timestampsEqual } from "./timestamps";
 import type {
@@ -304,6 +305,7 @@ export async function runPromotionSync(
         let promotionId: string;
 
         if (!existing) {
+          const newPromotionFields = computeNewPromotionFields(isInitialImportRun);
           const { data: inserted, error: insertError } = await db
             .from("promotions")
             .insert({
@@ -326,8 +328,8 @@ export async function runPromotionSync(
               store_promotion_allowed: (corePatch.store_promotion_allowed as string | null) ?? null,
               remarks: (corePatch.remarks as string | null) ?? null,
               extra_fields: extraFields as Record<string, Json>,
-              last_important_change_at: new Date().toISOString(),
-              is_initial_import: isInitialImportRun,
+              last_important_change_at: newPromotionFields.last_important_change_at,
+              is_initial_import: newPromotionFields.is_initial_import,
             })
             .select("id")
             .single();
@@ -349,7 +351,7 @@ export async function runPromotionSync(
             source_sheet: sheet,
             // Initial Import(최초 Sync)로 생성된 상품은 Push 소급 발송 대상에서
             // 제외한다 — 기록은 남기되 push_eligible=false (확정 사항, 2026-09-10).
-            push_eligible: !isInitialImportRun,
+            push_eligible: newPromotionFields.push_eligible,
           });
         } else {
           promotionId = existing.id;
