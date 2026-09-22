@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { detectPushSupportStatus, removePushSubscription, requestPushSubscription, type PushSupportStatus } from "@/lib/push/subscribe-client";
+import {
+  detectPushSupportStatus,
+  ensurePushSubscription,
+  removePushSubscription,
+  requestPushSubscription,
+  type PushSupportStatus,
+} from "@/lib/push/subscribe-client";
 
 // Notification.permission에는 표준 change 이벤트가 없다 — 구독할 게 없으므로 빈
 // unsubscribe만 반환한다. useSyncExternalStore를 쓰는 이유는 순전히 "서버(placeholder)와
@@ -28,8 +34,45 @@ export function PushPermissionCard() {
   const [overrideStatus, setOverrideStatus] = useState<PushSupportStatus | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [healResult, setHealResult] = useState<"pending" | "ok" | "error">("pending");
 
   const status = overrideStatus ?? detectedStatus;
+  // healing/healError는 healResult에서 파생한 값이다 — effect 진입 시점에 "시작했다"는
+  // setState를 따로 하지 않아도 되므로 react-hooks/set-state-in-effect(이펙트 본문에서
+  // 동기적으로 setState 호출 금지)를 자연히 피한다.
+  const healing = status === "granted" && healResult === "pending";
+  const healError = status === "granted" && healResult === "error";
+
+  // Self-heal(§2/§4): permission이 "granted"일 때 로컬 구독과 서버 DB 등록 상태가
+  // 어긋나 있으면(2026-09-22 Pilot에서 실제로 재현된 결함) 자동으로 맞춘다. setState는
+  // 오직 비동기 완료 콜백(.then) 안에서만 호출한다 — 의존성 배열이 status 값 자체라
+  // 같은 status에서는 재실행되지 않으므로 rerender마다 POST가 반복되지도 않는다.
+  useEffect(() => {
+    if (status !== "granted") return;
+    let cancelled = false;
+    ensurePushSubscription().then((result) => {
+      if (cancelled) return;
+      // not_granted/opted_out은 정상적으로 아무 것도 안 한 것이지 실패가 아니다.
+      if (!result.ok && result.reason !== "not_granted" && result.reason !== "opted_out") {
+        setHealResult("error");
+      } else {
+        setHealResult("ok");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  async function handleRetryHeal() {
+    setHealResult("pending");
+    const result = await ensurePushSubscription();
+    if (!result.ok && result.reason !== "not_granted" && result.reason !== "opted_out") {
+      setHealResult("error");
+    } else {
+      setHealResult("ok");
+    }
+  }
 
   if (status === "checking") return null;
 
@@ -60,7 +103,11 @@ export function PushPermissionCard() {
         <CardTitle>알림 받기</CardTitle>
         <CardDescription>
           {status === "granted"
-            ? "이 기기에서 중요 변경 알림을 받고 있어요."
+            ? healing
+              ? "알림 연결 상태를 확인하고 있어요..."
+              : healError
+                ? "알림 연결을 완료하지 못했습니다. 다시 시도해주세요."
+                : "이 기기에서 중요 변경 알림을 받고 있어요."
             : "중요한 가격변경과 행사공지를 놓치지 않도록 알려드릴게요."}
         </CardDescription>
       </CardHeader>
@@ -79,9 +126,16 @@ export function PushPermissionCard() {
         )}
 
         {status === "granted" && (
-          <Button type="button" variant="outline" size="sm" onClick={handleUnsubscribe} disabled={pending}>
-            {pending ? "해제 중..." : "이 기기 알림 끄기"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {healError && (
+              <Button type="button" variant="outline" size="sm" onClick={handleRetryHeal} disabled={pending || healing}>
+                {healing ? "다시 시도 중..." : "다시 시도"}
+              </Button>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={handleUnsubscribe} disabled={pending}>
+              {pending ? "해제 중..." : "이 기기 알림 끄기"}
+            </Button>
+          </div>
         )}
 
         {status === "denied" && (

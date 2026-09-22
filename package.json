@@ -31,7 +31,8 @@
     "test:push-send-authorization": "node --env-file=.env.local --import tsx scripts/test-push-send-authorization.ts",
     "test:admin-users": "node --env-file=.env.local --import tsx scripts/test-admin-users.ts",
     "test:security-review": "node --env-file=.env.local --import tsx scripts/test-security-review.ts",
-    "test:initial-import": "node --import tsx scripts/test-initial-import-fields.ts"
+    "test:initial-import": "node --import tsx scripts/test-initial-import-fields.ts",
+    "test:push-self-heal": "node --import tsx scripts/test-push-self-heal.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
