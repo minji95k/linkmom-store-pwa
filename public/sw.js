@@ -96,22 +96,37 @@ self.addEventListener("push", (event) => {
   );
 });
 
-// 클릭 시 Deep Link로 이동한다(§14). 이미 열려있는 탭이 있으면 그 탭을 포커스+이동,
-// 없으면 새 탭을 연다 — 로그인 안 돼 있으면 proxy.ts가 /login?next=<deepLink>로
-// 알아서 보내고, 로그인 후 next 파라미터로 원래 위치에 복귀한다(이미 구현돼 있음,
-// 이 Service Worker는 그냥 deepLink로 이동시키기만 하면 된다).
+// 내부 상대 경로("/notices/...", "/promotions/..." 등)만 허용한다 — "//evil.com"(프로토콜
+// 상대 URL)이나 절대 URL(https://...)은 외부 사이트로 이동할 수 있으므로 전부 "/"로 막는다.
+// src/lib/push/deep-link-guard.ts의 sanitizeInternalUrl()과 동일 로직이다 — 이 파일은
+// 빌드 파이프라인 밖의 정적 파일이라 TS 모듈을 import할 수 없어 손으로 복제해뒀다.
+// 어느 한쪽을 고치면 반드시 다른 쪽도 같이 고칠 것.
+function sanitizeInternalUrl(url) {
+  if (typeof url !== "string") return "/";
+  if (!url.startsWith("/") || url.startsWith("//")) return "/";
+  return url;
+}
+
+// 클릭 시 Deep Link로 이동한다(§14). 로그인 안 돼 있으면 proxy.ts가 /login?next=<deepLink>로
+// 알아서 보내고, 로그인 후 next 파라미터로 원래 위치에 복귀한다(이미 구현돼 있음).
+//
+// 2026-09-22 Production 실측: 기존 PWA 창이 이미 떠 있을 때 iOS Standalone에서
+// WindowClient.navigate()가 Background wake 직후 route를 안정적으로 반영하지 못하는
+// 현상을 실제로 겪었다(포커스는 성공하지만 화면은 마지막 화면 그대로) — Service
+// Worker가 직접 navigate()하는 대신, focus 후 postMessage로 목적지 URL만 클라이언트에
+// 전달하고 실제 이동은 앱 자신의 Next.js Router(register-sw.tsx의 message listener)가
+// 수행하도록 바꿨다. 기존 창이 전혀 없을 때(PWA 완전 종료)는 여전히 openWindow로 연다.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url ?? "/";
+  const url = sanitizeInternalUrl(event.notification.data?.url);
 
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client) {
-          client.focus();
-          if ("navigate" in client) return client.navigate(url);
-          return;
-        }
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clientList) => {
+      const existing = clientList.find((client) => "focus" in client);
+      if (existing) {
+        await existing.focus();
+        existing.postMessage({ type: "NOTIFICATION_CLICK", url });
+        return;
       }
       return self.clients.openWindow(url);
     }),

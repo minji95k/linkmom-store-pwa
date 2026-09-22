@@ -33,7 +33,8 @@
     "test:security-review": "node --env-file=.env.local --import tsx scripts/test-security-review.ts",
     "test:initial-import": "node --import tsx scripts/test-initial-import-fields.ts",
     "test:push-self-heal": "node --import tsx scripts/test-push-self-heal.ts",
-    "test:notice-datetime": "node --import tsx scripts/test-notice-datetime.ts"
+    "test:notice-datetime": "node --import tsx scripts/test-notice-datetime.ts",
+    "test:push-deep-link-navigation": "node --import tsx scripts/test-push-deep-link-navigation.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
