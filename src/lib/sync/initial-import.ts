@@ -22,3 +22,23 @@ export function computeNewPromotionFields(
     last_important_change_at: isInitialImportRun ? null : now(),
   };
 }
+
+/**
+ * `is_initial_import=true`인 상품의 `last_important_change_at`을 그 상품의 실제 change_log
+ * 이력만으로 다시 계산한다 — "생성 자체를 나타내는" change_type='new_product' Row는 제외하고,
+ * importance가 'minor'가 아닌(=실제 중요 변경, Push 판정과 동일 축) Row 중 가장 최근
+ * changed_at만 남긴다. `supabase/migrations/20260922110000_fix_initial_import_new_baseline.sql`의
+ * UPDATE 조건과 정확히 같은 규칙이다 — Initial Import 이후 실제 중요 변경이 전혀 없으면
+ * null(NEW 아님), 있으면 그 실제 변경 시각을 그대로 보존한다(무조건 null 처리가 아니다).
+ */
+export interface ChangeLogForRecompute {
+  changeType: string;
+  importance: "minor" | "important" | "critical";
+  changedAt: string;
+}
+
+export function recomputeLastImportantChangeAt(changeLogs: ChangeLogForRecompute[]): string | null {
+  const candidates = changeLogs.filter((log) => log.changeType !== "new_product" && log.importance !== "minor");
+  if (candidates.length === 0) return null;
+  return candidates.reduce((latest, log) => (log.changedAt > latest ? log.changedAt : latest), candidates[0]!.changedAt);
+}

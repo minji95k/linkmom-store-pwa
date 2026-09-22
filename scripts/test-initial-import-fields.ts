@@ -10,13 +10,23 @@
  *
  * 실행: npm run test:initial-import (환경변수 불필요)
  */
-import { computeNewPromotionFields } from "../src/lib/sync/initial-import";
+import { computeNewPromotionFields, recomputeLastImportantChangeAt } from "../src/lib/sync/initial-import";
 
 type Result = { name: string; pass: boolean; detail?: string };
 const results: Result[] = [];
 function record(name: string, pass: boolean, detail?: string) {
   results.push({ name, pass, detail });
   console.log(`[${pass ? "PASS" : "FAIL"}] ${name}${detail ? ` — ${detail}` : ""}`);
+}
+
+// src/lib/promotions/queries.ts의 isPromotionNew()/NEW_WINDOW_HOURS와 정확히 같은 공식이다
+// — 그 파일은 "server-only"를 import해 plain tsx 스크립트에서 직접 import할 수 없으므로
+// (Phase 11에서 확립한 패턴), 이 테스트 파일 안에서도 isInitialImportRun처럼 동일한 한 줄
+// 공식을 그대로 재사용한다.
+const NEW_WINDOW_HOURS = 72;
+function isNew(lastImportantChangeAt: string | null, nowMs: number): boolean {
+  if (!lastImportantChangeAt) return false;
+  return new Date(lastImportantChangeAt).getTime() >= nowMs - NEW_WINDOW_HOURS * 60 * 60 * 1000;
 }
 
 // engine.ts와 동일한 판정 공식을 그대로 재사용한다(로직이 갈라지면 이 테스트의
@@ -94,6 +104,63 @@ function isInitialImportRun(syncState: { initial_import_completed_at: string | n
     "E. Initial Import일 때는 now() 콜백을 아예 호출하지 않는다",
     nowCallCount === 0 && fields.last_important_change_at === null,
     `nowCallCount=${nowCallCount}`,
+  );
+}
+
+// (F) fresh permanent 최초 Import: computeNewPromotionFields(true)가 만든
+//     last_important_change_at(=null)을 그대로 NEW 판정에 넣으면 NEW가 아니어야 한다.
+{
+  const fields = computeNewPromotionFields(true, () => "2026-09-22T01:08:44.083Z");
+  const nowMs = new Date("2026-09-22T02:00:00.000Z").getTime(); // 삽입 직후
+  record(
+    "F. fresh permanent 최초 Import — NEW 아님",
+    isNew(fields.last_important_change_at, nowMs) === false,
+    `last_important_change_at=${fields.last_important_change_at}`,
+  );
+}
+
+// (G) fresh event 최초 Import도 동일 — sheet 종류로 분기하지 않는다는 설계를 NEW 판정까지
+//     이어서 검증한다(2026-09-22 Production에서 event 38건이 이 경로 결함으로 NEW
+//     노출됐던 것의 회귀 테스트).
+{
+  const fields = computeNewPromotionFields(true, () => "2026-09-22T01:10:44.879Z");
+  const nowMs = new Date("2026-09-22T02:00:00.000Z").getTime();
+  record(
+    "G. fresh event 최초 Import — NEW 아님",
+    isNew(fields.last_important_change_at, nowMs) === false,
+    `last_important_change_at=${fields.last_important_change_at}`,
+  );
+}
+
+// (H) 최초 Import 후 실제 important 변경이 있었던 상품: new_product(생성) 로그는 재계산에서
+//     제외되고, 그 뒤 실제 가격 변경(important) 로그의 changed_at이 살아남아 NEW로 정상
+//     노출돼야 한다 — "무조건 NULL 처리하면 안 된다"는 요구사항의 핵심 케이스.
+{
+  const recomputed = recomputeLastImportantChangeAt([
+    { changeType: "new_product", importance: "important", changedAt: "2026-09-10T05:52:47.217Z" },
+    { changeType: "field_change", importance: "important", changedAt: "2026-09-21T00:00:00.000Z" },
+  ]);
+  const nowMs = new Date("2026-09-22T00:00:00.000Z").getTime(); // 실제 변경 후 24시간 이내
+  record(
+    "H. 최초 Import 후 실제 important 변경 — 그 시각이 보존되고 NEW 정상 노출",
+    recomputed === "2026-09-21T00:00:00.000Z" && isNew(recomputed, nowMs) === true,
+    `recomputed=${recomputed}`,
+  );
+}
+
+// (I) minor 변경만 있는 경우(오타 정정 등): new_product 로그도, minor 변경 로그도 둘 다
+//     재계산 후보에서 제외되므로 null(NEW 아님)이어야 한다 — CLAUDE.md 절대 원칙 6("공백/
+//     오타/표기정리만 바뀐 것은 NEW 제외")과 일치.
+{
+  const recomputed = recomputeLastImportantChangeAt([
+    { changeType: "new_product", importance: "important", changedAt: "2026-09-10T05:52:47.217Z" },
+    { changeType: "field_change", importance: "minor", changedAt: "2026-09-21T00:00:00.000Z" },
+  ]);
+  const nowMs = new Date("2026-09-22T00:00:00.000Z").getTime();
+  record(
+    "I. 최초 Import 후 minor 변경만 있음 — null 유지, NEW 아님",
+    recomputed === null && isNew(recomputed, nowMs) === false,
+    `recomputed=${recomputed}`,
   );
 }
 
