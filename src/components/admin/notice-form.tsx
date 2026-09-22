@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { NoticeFormState } from "@/app/admin/notices/actions";
+import { utcIsoToKstDatetimeLocal } from "@/lib/notices/datetime";
 import type { Database, NoticeType, UserRole } from "@/types/database";
 
 const NOTICE_TYPES: NoticeType[] = [
@@ -28,12 +29,11 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 
 type StoreRow = Pick<Database["public"]["Tables"]["stores"]["Row"], "id" | "name">;
 
-/** yyyy-MM-ddTHH:mm — <input type="datetime-local">의 value 포맷. */
+/** yyyy-MM-ddTHH:mm(KST) — <input type="datetime-local">의 value 포맷. 실행 환경의
+ * 로컬 타임존에 의존하지 않도록 src/lib/notices/datetime.ts의 공통 유틸을 그대로 쓴다. */
 function toDatetimeLocal(iso: string | null | undefined): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return utcIsoToKstDatetimeLocal(iso);
 }
 
 export interface NoticeFormInitialValues {

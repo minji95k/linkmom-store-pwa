@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth/get-current-user";
+import { kstDatetimeLocalToUtcIso } from "@/lib/notices/datetime";
 import { notifyNoticeCreated } from "@/lib/push/notify-notice";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
@@ -114,8 +115,8 @@ export async function createNoticeAction(_prevState: NoticeFormState, formData: 
       is_pinned: isPinned,
       requires_confirmation: requiresConfirmation,
       external_link: externalLink || null,
-      published_at: publishedAtRaw ? new Date(publishedAtRaw).toISOString() : undefined,
-      expires_at: expiresAtRaw ? new Date(expiresAtRaw).toISOString() : null,
+      published_at: publishedAtRaw ? kstDatetimeLocalToUtcIso(publishedAtRaw) : undefined,
+      expires_at: expiresAtRaw ? kstDatetimeLocalToUtcIso(expiresAtRaw) : null,
     })
     .select("id")
     .single();
@@ -175,8 +176,8 @@ export async function updateNoticeAction(
       is_pinned: isPinned,
       requires_confirmation: requiresConfirmation,
       external_link: externalLink || null,
-      published_at: publishedAtRaw ? new Date(publishedAtRaw).toISOString() : undefined,
-      expires_at: expiresAtRaw ? new Date(expiresAtRaw).toISOString() : null,
+      published_at: publishedAtRaw ? kstDatetimeLocalToUtcIso(publishedAtRaw) : undefined,
+      expires_at: expiresAtRaw ? kstDatetimeLocalToUtcIso(expiresAtRaw) : null,
     })
     .eq("id", noticeId);
   if (error) return { error: `공지 수정에 실패했습니다: ${error.message}` };
