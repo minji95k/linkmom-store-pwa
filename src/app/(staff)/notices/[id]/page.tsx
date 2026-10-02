@@ -26,8 +26,15 @@ export default async function NoticeDetailPage({ params }: { params: Promise<{ i
   const { notice, myRead } = result;
 
   // 목록에 노출된 것만으로는 읽음 처리하지 않는다 — 상세를 실제로 연 이 순간에만 기록한다(§7).
+  // 2026-10-02 실측 버그 대응: 이 읽음 기록은 부가 효과일 뿐이다 — 이게 실패해도(RLS
+  // 정책 변경 등 예상 못 한 사유로) 이미 RLS를 통과해 가져온 공지 본문 자체를 못 보여줄
+  // 이유는 없다. 실패를 조용히 삼키지 않고 서버 로그에는 남긴다.
   if (!myRead) {
-    await markNoticeRead(supabase, id, currentUser.id);
+    try {
+      await markNoticeRead(supabase, id, currentUser.id);
+    } catch (error) {
+      console.error(`markNoticeRead 실패 (noticeId=${id}, userId=${currentUser.id}):`, error);
+    }
   }
 
   const attachments = await getAttachmentsForNotice(id);

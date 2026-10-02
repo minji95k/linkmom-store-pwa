@@ -59,6 +59,7 @@ const TITLES = {
   future: "[DEV Phase8] 게시 예정(아직 비노출) 공지",
   expired: "[DEV Phase8] 게시 종료(비노출) 공지",
   link: "[DEV Phase8] 외부링크 포함 공지",
+  staffRole: "[DEV Phase8] STAFF 전체(Role) 필독공지",
 };
 
 async function main() {
@@ -81,13 +82,14 @@ async function main() {
     }
   }
 
-  // 8/9번 검증은 "아직 안 읽음" 전제로 시작해야 한다 — 재실행 시에도 항상 그 전제가
+  // 8/9/10번 검증은 "아직 안 읽음" 전제로 시작해야 한다 — 재실행 시에도 항상 그 전제가
   // 성립하도록, 이 스위트가 이전에 만들었을 수 있는 read/confirm 흔적을 먼저 지운다.
   {
     const { data: hqUser } = await staffHq.auth.getUser();
     const { data: dongbaekUser } = await staffDongbaek.auth.getUser();
-    const noticeIds = [idByTitle.get(TITLES.all)!, idByTitle.get(TITLES.required)!];
-    const userIds = [hqUser.user!.id, dongbaekUser.user!.id];
+    const { data: adminUser } = await admin.auth.getUser();
+    const noticeIds = [idByTitle.get(TITLES.all)!, idByTitle.get(TITLES.required)!, idByTitle.get(TITLES.staffRole)!];
+    const userIds = [hqUser.user!.id, dongbaekUser.user!.id, adminUser.user!.id];
     const { error } = await serviceRole.from("notice_reads").delete().in("notice_id", noticeIds).in("user_id", userIds);
     if (error) throw error;
   }
@@ -249,6 +251,79 @@ async function main() {
       "9. STAFF — read 후에는 confirm 성공(read와 confirmed는 별도 상태)",
       !insertError && !confirmError && (confirmed ?? []).length === 1 && confirmed?.[0]?.confirmed_at !== null,
       `error=${confirmError?.message ?? "none"}`,
+    );
+  }
+
+  // 10) 2026-10-02 실측 버그 회귀 검증 — ADMIN이 role 타겟(STAFF) 공지의 notice_reads를
+  // 기록할 수 있는지(20261002100000_fix_admin_notice_read_insert.sql). 시나리오 A~F는
+  // 사용자가 지정한 DEV 검증 항목과 1:1 대응한다.
+  const staffRoleId = idByTitle.get(TITLES.staffRole)!;
+  {
+    // A. STAFF 대상 Notice + ADMIN session → SELECT PASS → notice_reads INSERT PASS
+    const { data: adminUser } = await admin.auth.getUser();
+    const { data: selectData, error: selectError } = await admin
+      .from("notices")
+      .select("id")
+      .eq("id", staffRoleId)
+      .maybeSingle();
+    record("10A. ADMIN — role:STAFF 공지 SELECT 성공", !selectError && selectData !== null, `error=${selectError?.message}`);
+
+    const { error: insertError } = await admin
+      .from("notice_reads")
+      .upsert({ notice_id: staffRoleId, user_id: adminUser.user!.id }, { onConflict: "notice_id,user_id" });
+    record("10A. ADMIN — role:STAFF 공지 notice_reads INSERT 성공(수정 전 42501로 실패하던 지점)", !insertError, `error=${insertError?.message}`);
+  }
+  {
+    // B. STAFF 대상 Notice + STAFF session → 기존처럼 INSERT PASS(회귀 없음)
+    const { data: hqUser } = await staffHq.auth.getUser();
+    const { error } = await staffHq
+      .from("notice_reads")
+      .upsert({ notice_id: staffRoleId, user_id: hqUser.user!.id }, { onConflict: "notice_id,user_id" });
+    record("10B. STAFF(본점) — role:STAFF 공지 notice_reads INSERT 기존처럼 성공", !error, `error=${error?.message}`);
+  }
+  {
+    // C. 다른 user_id로 INSERT 시도 → user_id = auth.uid() 조건은 ADMIN도 예외 없이 그대로 유지돼야 한다.
+    const { data: hqUser } = await staffHq.auth.getUser();
+    const { error } = await admin
+      .from("notice_reads")
+      .upsert({ notice_id: staffRoleId, user_id: hqUser.user!.id }, { onConflict: "notice_id,user_id" });
+    record("10C. ADMIN — 다른 user_id(staffHq)로 notice_reads INSERT 시도는 RLS로 실패", !!error, `error=${error?.message ?? "(에러 없음 — 실패해야 함)"}`);
+  }
+  {
+    // D. target 불일치 STAFF(동백점은 role:STAFF 대상이라 실제로는 보임 — 진짜 불일치는
+    // ADMIN 전용 공지에 STAFF가 접근하는 경우) → 기존처럼 SELECT/INSERT 둘 다 FAIL.
+    const adminOnlyId = idByTitle.get(TITLES.adminOnly)!;
+    const { data: hqUser } = await staffHq.auth.getUser();
+    const { data: selectData } = await staffHq.from("notices").select("id").eq("id", adminOnlyId).maybeSingle();
+    record("10D. STAFF — ADMIN 전용 공지 SELECT 불가(기존과 동일)", selectData === null);
+
+    const { error: insertError } = await staffHq
+      .from("notice_reads")
+      .upsert({ notice_id: adminOnlyId, user_id: hqUser.user!.id }, { onConflict: "notice_id,user_id" });
+    record("10D. STAFF — ADMIN 전용 공지 notice_reads INSERT도 기존처럼 RLS로 실패", !!insertError, `error=${insertError?.message ?? "(에러 없음 — 실패해야 함)"}`);
+  }
+  {
+    // E. all 대상 Notice → 기존처럼 정상(이미 8번에서 staffHq로 검증됨 — 여기서는 ADMIN으로 추가 확인).
+    const { data: adminUser } = await admin.auth.getUser();
+    const allNoticeId2 = idByTitle.get(TITLES.all)!;
+    const { error } = await admin
+      .from("notice_reads")
+      .upsert({ notice_id: allNoticeId2, user_id: adminUser.user!.id }, { onConflict: "notice_id,user_id" });
+    record("10E. ADMIN — all 대상 공지 notice_reads INSERT 기존처럼 정상(원래도 되던 경로, 회귀 없음 확인)", !error, `error=${error?.message}`);
+  }
+  {
+    // F. requires_confirmation 공지 — ADMIN의 read_at(upsert, 위 10A) 이후 confirmed_at UPDATE도 정상인지.
+    const { data: adminUser } = await admin.auth.getUser();
+    const { data, error } = await admin
+      .from("notice_reads")
+      .update({ confirmed_at: new Date().toISOString() })
+      .eq("notice_id", staffRoleId)
+      .eq("user_id", adminUser.user!.id)
+      .select("read_at, confirmed_at");
+    record(
+      "10F. ADMIN — 필독(requires_confirmation) 공지 confirm(UPDATE) 정상",
+      !error && (data ?? []).length === 1 && data?.[0]?.read_at !== null && data?.[0]?.confirmed_at !== null,
+      `error=${error?.message}`,
     );
   }
 

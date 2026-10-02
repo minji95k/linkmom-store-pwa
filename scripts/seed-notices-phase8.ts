@@ -39,7 +39,7 @@ interface FixtureNotice {
   published_at?: string; // 생략 시 now()
   expires_at?: string | null;
   external_link?: string | null;
-  target: { type: TargetType; storeCode?: (typeof STORES)[number]["code"]; role?: "ADMIN" };
+  target: { type: TargetType; storeCode?: (typeof STORES)[number]["code"]; role?: "ADMIN" | "STAFF" };
   /**
    * true면 이미 존재해도 published_at/expires_at을 "지금 실행 시점" 기준으로 다시
    * 계산해 갱신한다 — "게시 예정"/"게시 종료" 픽스처는 상대 오프셋(+24h/-1h)으로
@@ -91,6 +91,15 @@ const FIXTURES: FixtureNotice[] = [
     body: "role=ADMIN 대상 공지입니다. STAFF/STORE_MANAGER에게는 보이면 안 됩니다.",
     notice_type: "시스템",
     target: { type: "role", role: "ADMIN" },
+  },
+  {
+    title: "[DEV Phase8] STAFF 전체(Role) 필독공지",
+    body:
+      "role=STAFF 대상 필독공지입니다. 2026-10-02 실측 버그(ADMIN이 role 타겟 공지를 열면 " +
+      "notice_reads INSERT가 RLS로 막혀 상세 페이지 전체가 Server Error) 재현/회귀 검증 전용.",
+    notice_type: "필독",
+    requires_confirmation: true,
+    target: { type: "role", role: "STAFF" },
   },
   {
     title: "[DEV Phase8] 게시 예정(아직 비노출) 공지",
